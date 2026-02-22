@@ -94,11 +94,12 @@ export default function AIAssistant() {
     setInput("");
     setIsLoading(true);
 
-    const context = buildContext();
-    const conversationHistory = messages.slice(-6).map((m) => `${m.role}: ${m.content}`).join("\n");
+    try {
+      const context = buildContext();
+      const conversationHistory = messages.slice(-8).map((m) => `${m.role}: ${m.content}`).join("\n");
 
-    const response = await base44.integrations.Core.InvokeLLM({
-      prompt: `You are Luna, a friendly and knowledgeable AI menstrual health assistant. You provide helpful, empathetic, and evidence-based advice about menstrual health, cycle tracking, symptoms, and wellness.
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are Luna, a friendly and knowledgeable AI menstrual health assistant. You provide helpful, empathetic, and evidence-based advice about menstrual health, cycle tracking, symptoms, and wellness.
 
 IMPORTANT: You are NOT a doctor. Always recommend consulting a healthcare provider for serious concerns. Be warm, supportive, and non-judgmental.
 
@@ -110,10 +111,17 @@ ${conversationHistory}
 User's question: ${text}
 
 Provide a helpful, personalized response based on the user's data. Use markdown formatting for readability. Keep responses concise but informative.`,
-    });
+      });
 
-    setMessages((prev) => [...prev, { role: "assistant", content: response }]);
-    setIsLoading(false);
+      setMessages((prev) => [...prev, { role: "assistant", content: response }]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Sorry, I couldn't respond right now. Please try again in a moment. 💜" },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
