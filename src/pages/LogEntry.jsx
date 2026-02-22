@@ -128,22 +128,102 @@ export default function LogEntry() {
       icon: Dumbbell,
       color: "text-emerald-500",
       content: (
-        <div className="space-y-5">
+        <div className="space-y-4">
+          {/* Sleep */}
           <div className="bg-white rounded-2xl p-4 border border-slate-100">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-indigo-50 w-9 h-9 rounded-xl flex items-center justify-center">
                 <Moon className="w-4 h-4 text-indigo-500" />
               </div>
-              <span className="text-sm font-medium text-slate-700">Sleep (hours)</span>
+              <span className="text-sm font-medium text-slate-700">Sleep</span>
             </div>
             <Input
               type="number"
-              placeholder="e.g. 7.5"
+              placeholder="Hours (e.g. 7.5)"
               value={data.sleep_hours}
               onChange={(e) => setData({ ...data, sleep_hours: e.target.value })}
-              className="rounded-xl border-slate-200"
+              className="rounded-xl border-slate-200 mb-3"
             />
+            <p className="text-xs text-slate-400 mb-2">Sleep quality</p>
+            <div className="flex gap-2">
+              {[1,2,3,4,5].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setData({ ...data, sleep_quality: v })}
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${
+                    data.sleep_quality === v
+                      ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                      : "border-slate-100 text-slate-400 hover:border-slate-200"
+                  }`}
+                >
+                  {v === 1 ? "😴" : v === 2 ? "😕" : v === 3 ? "😐" : v === 4 ? "🙂" : "😄"}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Exercise */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-100">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-emerald-50 w-9 h-9 rounded-xl flex items-center justify-center">
+                <Dumbbell className="w-4 h-4 text-emerald-500" />
+              </div>
+              <span className="text-sm font-medium text-slate-700">Exercise</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { id: "none", label: "None", emoji: "🛋️" },
+                { id: "light", label: "Light", emoji: "🚶" },
+                { id: "moderate", label: "Moderate", emoji: "🏃" },
+                { id: "intense", label: "Intense", emoji: "🏋️" },
+              ].map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => setData({ ...data, exercise_type: e.id, exercise: e.id !== "none" })}
+                  className={`flex flex-col items-center py-2 rounded-xl border-2 text-xs font-medium transition-all ${
+                    data.exercise_type === e.id
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                      : "border-slate-100 text-slate-500 hover:border-slate-200"
+                  }`}
+                >
+                  <span className="text-lg mb-0.5">{e.emoji}</span>
+                  {e.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Stress */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-100">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-rose-50 w-9 h-9 rounded-xl flex items-center justify-center">
+                <Zap className="w-4 h-4 text-rose-500" />
+              </div>
+              <span className="text-sm font-medium text-slate-700">Stress level</span>
+            </div>
+            <div className="flex gap-2">
+              {[1,2,3,4,5].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setData({ ...data, stress_level: v })}
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${
+                    data.stress_level === v
+                      ? v <= 2 ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                        : v === 3 ? "border-amber-400 bg-amber-50 text-amber-700"
+                        : "border-rose-400 bg-rose-50 text-rose-700"
+                      : "border-slate-100 text-slate-400 hover:border-slate-200"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-between text-[10px] text-slate-300 mt-1 px-1">
+              <span>Low</span><span>High</span>
+            </div>
+          </div>
+
+          {/* Water */}
           <div className="bg-white rounded-2xl p-4 border border-slate-100">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-blue-50 w-9 h-9 rounded-xl flex items-center justify-center">
@@ -157,18 +237,6 @@ export default function LogEntry() {
               value={data.water_intake}
               onChange={(e) => setData({ ...data, water_intake: e.target.value })}
               className="rounded-xl border-slate-200"
-            />
-          </div>
-          <div className="bg-white rounded-2xl p-4 border border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-50 w-9 h-9 rounded-xl flex items-center justify-center">
-                <Dumbbell className="w-4 h-4 text-emerald-500" />
-              </div>
-              <span className="text-sm font-medium text-slate-700">Exercised today?</span>
-            </div>
-            <Switch
-              checked={data.exercise}
-              onCheckedChange={(v) => setData({ ...data, exercise: v })}
             />
           </div>
         </div>
