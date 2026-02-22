@@ -106,7 +106,7 @@ export default function Home() {
         />
       </div>
 
-      <AIPrediction logs={recentLogs} settings={settings} />
+      <AIPrediction logs={recentLogs} settings={settings} onPrediction={setAiPrediction} />
 
       <DailyTip phase={phase} />
 
