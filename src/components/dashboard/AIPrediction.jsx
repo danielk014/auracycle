@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Sparkles, Loader2 } from "lucide-react";
 import { differenceInDays, parseISO, format, addDays } from "date-fns";
 
-export default function AIPrediction({ logs, settings }) {
+export default function AIPrediction({ logs, settings, onPrediction }) {
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
