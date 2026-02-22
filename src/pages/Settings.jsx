@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Settings as SettingsIcon, Save, Check, LogOut } from "lucide-react";
 import { toast } from "sonner";
+import RemindersSection from "@/components/settings/RemindersSection";
 
 export default function Settings() {
   const queryClient = useQueryClient();
