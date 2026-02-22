@@ -150,14 +150,9 @@ export default function Settings() {
             />
           </div>
 
-          <div className="flex items-center justify-between py-2">
-            <Label className="text-sm text-slate-600">Notifications</Label>
-            <Switch
-              checked={form.notifications_enabled}
-              onCheckedChange={(v) => setForm({ ...form, notifications_enabled: v })}
-            />
-          </div>
         </div>
+
+        <RemindersSection form={form} setForm={setForm} />
 
         <Button
           onClick={() => saveMutation.mutate()}
