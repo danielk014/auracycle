@@ -51,7 +51,7 @@ Analyze the actual gaps between periods and predict:
         },
       },
     })
-      .then((res) => setPrediction(res))
+      .then((res) => { setPrediction(res); onPrediction?.(res); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [logs, settings]);
