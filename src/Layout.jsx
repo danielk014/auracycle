@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { createPageUrl } from "@/pages/utils";
+import { createPageUrl } from "@/utils";
 import { Home, CalendarDays, TrendingUp, Settings, Sparkles } from "lucide-react";
 
 const NAV_ITEMS = [

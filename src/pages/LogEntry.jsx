@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { ArrowLeft, Check, ChevronRight, Droplets, Heart, Brain, Pencil, Dumbbell, Moon, GlassWater } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/pages/utils";
+import { createPageUrl } from "@/utils";
 import FlowPicker from "@/components/log/FlowPicker";
 import SymptomPicker from "@/components/log/SymptomPicker";
 import MoodPicker from "@/components/log/MoodPicker";

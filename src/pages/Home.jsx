@@ -7,7 +7,7 @@ import CycleWheel from "@/components/dashboard/CycleWheel";
 import QuickStats from "@/components/dashboard/QuickStats";
 import DailyTip from "@/components/dashboard/DailyTip";
 import { Link } from "react-router-dom";
-import { createPageUrl } from "@/pages/utils";
+import { createPageUrl } from "@/utils";
 import { Plus, MessageCircle } from "lucide-react";
 
 function getPhase(cycleDay, cycleLength, periodLength) {

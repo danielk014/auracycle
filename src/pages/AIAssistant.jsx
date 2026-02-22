@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Send, Sparkles, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { createPageUrl } from "@/pages/utils";
+import { createPageUrl } from "@/utils";
 import { format, differenceInDays, addDays } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
 import { Button } from "@/components/ui/button";
