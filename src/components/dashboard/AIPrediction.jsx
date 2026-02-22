@@ -23,13 +23,26 @@ export default function AIPrediction({ logs, settings, onPrediction }) {
     setFetched(true);
 
     const context = periodLogs
-      .map((l) => `${l.date} (flow: ${l.flow_intensity || "unknown"})`)
+      .map((l) => {
+        let s = `${l.date} (flow: ${l.flow_intensity || "unknown"}`;
+        if (l.stress_level) s += `, stress: ${l.stress_level}/5`;
+        if (l.sleep_quality) s += `, sleep quality: ${l.sleep_quality}/5`;
+        if (l.exercise_type && l.exercise_type !== "none") s += `, exercise: ${l.exercise_type}`;
+        return s + ")";
+      })
       .join(", ");
+
+    const symptomContext = logs
+      .filter((l) => l.symptoms?.length > 0)
+      .slice(0, 10)
+      .map((l) => `${l.date}: ${l.symptoms.join(", ")}`)
+      .join("; ");
 
     base44.integrations.Core.InvokeLLM({
       prompt: `You are a menstrual cycle prediction AI. Based on historical period data, predict the next period.
 
-Historical period log dates: ${context}
+Historical period log dates (with lifestyle factors): ${context}
+Recent symptoms: ${symptomContext || "none"}
 Reported average cycle length: ${settings.average_cycle_length || 28} days
 Last period start: ${settings.last_period_start || "unknown"}
 Today's date: ${format(new Date(), "yyyy-MM-dd")}
