@@ -1,162 +1,218 @@
 import React, { useState, useRef, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Send, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Send, Sparkles, Loader2, RotateCcw, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { format, differenceInDays, addDays } from "date-fns";
+import { differenceInDays } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
 import { Button } from "@/components/ui/button";
+import { getCycleLogs, getCycleSettings } from "@/lib/db";
 
-const SUGGESTIONS = [
-  "Why might my period be late?",
-  "Tips for managing PMS symptoms",
-  "What does my cycle pattern say about my health?",
-  "Best foods during my period",
-  "How to reduce cramps naturally",
-  "Why am I more emotional before my period?",
+const SUGGESTION_CATEGORIES = [
+  {
+    label: "Cycle",
+    color: "bg-rose-50 text-rose-600 border-rose-100",
+    prompts: [
+      "Why might my period be late?",
+      "What's a normal cycle length?",
+      "What does my cycle pattern say about my health?",
+    ],
+  },
+  {
+    label: "Symptoms",
+    color: "bg-amber-50 text-amber-700 border-amber-100",
+    prompts: [
+      "Tips for managing PMS symptoms",
+      "How to reduce cramps naturally",
+      "Why do I feel bloated before my period?",
+    ],
+  },
+  {
+    label: "Mood",
+    color: "bg-violet-50 text-violet-600 border-violet-100",
+    prompts: [
+      "Why am I more emotional before my period?",
+      "How does my cycle affect my mood?",
+      "Natural ways to feel better during PMS",
+    ],
+  },
+  {
+    label: "Wellness",
+    color: "bg-emerald-50 text-emerald-700 border-emerald-100",
+    prompts: [
+      "Best foods during my period",
+      "How does sleep affect my cycle?",
+      "Exercise tips for each cycle phase",
+    ],
+  },
 ];
 
+const LUNA_SYSTEM_PROMPT = (context) => `You are Luna, a warm, empathetic, and knowledgeable AI menstrual health assistant built into the AuraCycle app. You help users understand their cycle, symptoms, mood patterns, and overall wellness.
+
+Guidelines:
+- Be warm, supportive, and non-judgmental
+- Provide evidence-based, accurate information
+- Personalise responses using the user's actual cycle data when relevant
+- Keep responses concise but helpful — use bullet points and bold for readability
+- Always recommend consulting a healthcare provider for serious medical concerns
+- You are NOT a doctor — make this clear when appropriate
+- Use a friendly, conversational tone — like a knowledgeable friend
+
+${context}`;
+
 export default function AIAssistant() {
-  const [input, setInput] = useState("");
+  const [input, setInput]       = useState("");
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const chatEndRef = useRef(null);
-  const inputRef = useRef(null);
+  const [activeCat, setActiveCat] = useState(0);
+  const chatEndRef   = useRef(null);
+  const textareaRef  = useRef(null);
 
-  const { data: logs } = useQuery({
+  const { data: logs = [] } = useQuery({
     queryKey: ["cycleLogs"],
-    queryFn: () => base44.entities.CycleLog.list("-date", 100),
-    initialData: [],
+    queryFn: () => getCycleLogs(100),
   });
 
   const { data: settings } = useQuery({
     queryKey: ["cycleSettings"],
-    queryFn: async () => {
-      const list = await base44.entities.CycleSettings.list();
-      return list[0] || null;
-    },
+    queryFn: getCycleSettings,
   });
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isLoading]);
+
+  const handleInputChange = (e) => {
+    setInput(e.target.value);
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = "auto";
+      ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+    }
+  };
 
   const buildContext = () => {
-    const periodLogs = logs.filter((l) => l.log_type === "period").slice(0, 20);
-    const symptomLogs = logs.filter((l) => l.symptoms?.length > 0).slice(0, 20);
-    const moodLogs = logs.filter((l) => l.moods?.length > 0).slice(0, 20);
+    const periodLogs  = logs.filter((l) => l.log_type === "period").slice(0, 15);
+    const symptomLogs = logs.filter((l) => l.symptoms?.length > 0).slice(0, 10);
+    const moodLogs    = logs.filter((l) => l.moods?.length > 0).slice(0, 10);
 
-    let context = "User's Menstrual Health Data:\n";
+    let ctx = "=== User's Cycle & Health Data ===\n";
 
     if (settings) {
-      context += `- Average cycle length: ${settings.average_cycle_length || 28} days\n`;
-      context += `- Average period length: ${settings.average_period_length || 5} days\n`;
+      ctx += `Cycle length: ${settings.average_cycle_length || 28} days\n`;
+      ctx += `Period length: ${settings.average_period_length || 5} days\n`;
       if (settings.last_period_start) {
         const daysSince = differenceInDays(new Date(), new Date(settings.last_period_start));
-        context += `- Last period started: ${settings.last_period_start} (${daysSince} days ago)\n`;
-        context += `- Current cycle day: ${(daysSince % (settings.average_cycle_length || 28)) + 1}\n`;
+        const cycleDay  = (daysSince % (settings.average_cycle_length || 28)) + 1;
+        ctx += `Last period: ${settings.last_period_start} (${daysSince} days ago, now cycle day ${cycleDay})\n`;
+      }
+      if (settings.last_period_end) {
+        ctx += `Last period end: ${settings.last_period_end}\n`;
       }
     }
 
     if (periodLogs.length > 0) {
-      context += "\nRecent Period Logs:\n";
-      periodLogs.forEach((l) => {
-        context += `- ${l.date}: Flow ${l.flow_intensity || "unspecified"}`;
-        if (l.symptoms?.length) context += `, Symptoms: ${l.symptoms.join(", ")}`;
-        context += "\n";
+      ctx += "\nRecent period logs:\n";
+      periodLogs.slice(0, 8).forEach((l) => {
+        ctx += `  • ${l.date}: flow=${l.flow_intensity || "unspecified"}`;
+        if (l.symptoms?.length) ctx += `, symptoms: ${l.symptoms.join(", ")}`;
+        ctx += "\n";
       });
     }
 
     if (symptomLogs.length > 0) {
-      context += "\nRecent Symptoms (format: name:severity where 1=mild, 2=moderate, 3=severe):\n";
-      symptomLogs.forEach((l) => {
-        context += `- ${l.date}: ${l.symptoms.join(", ")}`;
-        if (l.stress_level) context += `, Stress: ${l.stress_level}/5`;
-        context += "\n";
+      ctx += "\nRecent symptoms:\n";
+      symptomLogs.slice(0, 6).forEach((l) => {
+        ctx += `  • ${l.date}: ${l.symptoms.join(", ")}`;
+        if (l.stress_level) ctx += ` | stress: ${l.stress_level}/5`;
+        ctx += "\n";
       });
     }
 
     if (moodLogs.length > 0) {
-      context += "\nRecent Moods:\n";
-      moodLogs.forEach((l) => {
-        context += `- ${l.date}: ${l.moods.join(", ")}\n`;
+      ctx += "\nRecent moods:\n";
+      moodLogs.slice(0, 6).forEach((l) => {
+        ctx += `  • ${l.date}: ${l.moods.join(", ")}\n`;
       });
     }
 
-    const lifestyleLogs = logs.filter((l) => l.sleep_hours || l.stress_level || l.exercise_type).slice(0, 10);
-    if (lifestyleLogs.length > 0) {
-      context += "\nRecent Lifestyle Factors:\n";
-      lifestyleLogs.forEach((l) => {
-        const parts = [];
-        if (l.sleep_hours) parts.push(`Sleep: ${l.sleep_hours}h (quality: ${l.sleep_quality || "??"}/5)`);
-        if (l.stress_level) parts.push(`Stress: ${l.stress_level}/5`);
-        if (l.exercise_type && l.exercise_type !== "none") parts.push(`Exercise: ${l.exercise_type}`);
-        if (l.water_intake) parts.push(`Water: ${l.water_intake} glasses`);
-        if (parts.length) context += `- ${l.date}: ${parts.join(", ")}\n`;
-      });
-    }
-
-    return context;
+    return ctx;
   };
 
   const sendMessage = async (text) => {
     const trimmed = (text || "").trim();
     if (!trimmed || isLoading) return;
 
-    const userMessage = { role: "user", content: trimmed };
-    setMessages((prev) => [...prev, userMessage]);
+    const userMsg = { role: "user", content: trimmed };
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     setIsLoading(true);
 
     try {
-      const context = buildContext();
-      const conversationHistory = messages.slice(-8).map((m) => `${m.role}: ${m.content}`).join("\n");
+      const systemPrompt = LUNA_SYSTEM_PROMPT(buildContext());
 
-      const response = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are Luna, a friendly and knowledgeable AI menstrual health assistant. You provide helpful, empathetic, and evidence-based advice about menstrual health, cycle tracking, symptoms, and wellness.
-
-IMPORTANT: You are NOT a doctor. Always recommend consulting a healthcare provider for serious concerns. Be warm, supportive, and non-judgmental.
-
-${context}
-
-Previous conversation:
-${conversationHistory}
-
-User's question: ${trimmed}
-
-Provide a helpful, personalized response based on the user's data. Use markdown formatting for readability. Keep responses concise but informative.`,
+      // Call Vercel serverless function — uses server-side ANTHROPIC_API_KEY
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemPrompt,
+          messages: updatedMessages.slice(-10), // send last 10 messages for context
+        }),
       });
 
-      const content = typeof response === "string" ? response : response?.content ?? JSON.stringify(response);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      const { content } = await res.json();
       setMessages((prev) => [...prev, { role: "assistant", content }]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Sorry, I couldn't respond right now. Please try again in a moment. 💜" },
+        {
+          role: "assistant",
+          content: `Sorry, I couldn't respond right now. ${err.message || "Please try again."} 💜`,
+        },
       ]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const activeCategory = SUGGESTION_CATEGORIES[activeCat];
+
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-b from-violet-50/50 to-white max-w-lg mx-auto">
+    <div className="flex flex-col h-screen max-w-lg mx-auto" style={{ background: "linear-gradient(160deg, #faf5ff 0%, #fff0f8 100%)" }}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <Link to={createPageUrl("Home")} className="p-2 -ml-2 rounded-xl hover:bg-slate-100 transition-colors">
+      <div className="flex items-center gap-3 px-4 pt-10 pb-3 bg-white/70 backdrop-blur-xl border-b border-purple-50 shadow-sm">
+        <Link to={createPageUrl("Home")} className="p-2 -ml-2 rounded-xl hover:bg-purple-50 transition-colors">
           <ArrowLeft className="w-5 h-5 text-slate-500" />
         </Link>
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-400 to-rose-400 flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-white" />
+        <div className="flex items-center gap-2.5 flex-1">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center shadow-md shadow-violet-200">
+            <Sparkles className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-slate-800">Luna AI</h2>
-            <p className="text-xs text-slate-400">Your health assistant</p>
+            <h2 className="text-sm font-bold text-slate-800">Luna AI</h2>
+            <p className="text-[11px] text-slate-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+              Powered by Claude Sonnet 4.5
+            </p>
           </div>
         </div>
+        {messages.length > 0 && (
+          <button
+            onClick={() => setMessages([])}
+            className="p-2 rounded-xl hover:bg-purple-50 transition-colors text-slate-400 hover:text-slate-600"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Messages */}
@@ -165,90 +221,130 @@ Provide a helpful, personalized response based on the user's data. Use markdown 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center pt-8"
+            className="flex flex-col items-center pt-6"
           >
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-100 to-rose-100 flex items-center justify-center mb-4">
-              <Sparkles className="w-7 h-7 text-violet-500" />
+            <div className="relative mb-5">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-violet-400 via-purple-500 to-pink-500 flex items-center justify-center shadow-xl shadow-violet-200">
+                <Sparkles className="w-9 h-9 text-white" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-400 border-2 border-white flex items-center justify-center">
+                <span className="text-white text-[8px] font-bold">AI</span>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-1">Hey there! 👋</h3>
-            <p className="text-sm text-slate-400 text-center mb-6 max-w-xs">
-              I'm Luna, your AI health companion. Ask me anything about your cycle, symptoms, or wellness.
+            <h3 className="text-xl font-bold text-slate-800 mb-1">Hi, I'm Luna! 👋</h3>
+            <p className="text-sm text-slate-500 text-center mb-6 max-w-xs leading-relaxed">
+              Your personal cycle health companion. Ask me anything — I'm here to help you understand your body.
             </p>
+
+            {/* Category tabs */}
+            <div className="w-full mb-3">
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                {SUGGESTION_CATEGORIES.map((cat, i) => (
+                  <button
+                    key={cat.label}
+                    onClick={() => setActiveCat(i)}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                      activeCat === i ? cat.color + " shadow-sm" : "bg-white text-slate-400 border-slate-100"
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="w-full space-y-2">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Try asking</p>
-              {SUGGESTIONS.map((s, i) => (
-                <motion.button
-                  key={s}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.08 }}
-                  onClick={() => sendMessage(s)}
-                  className="w-full text-left text-sm bg-white rounded-2xl px-4 py-3 border border-slate-100 text-slate-600 hover:border-violet-200 hover:bg-violet-50/50 transition-all"
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeCat}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.18 }}
+                  className="space-y-2"
                 >
-                  {s}
-                </motion.button>
-              ))}
+                  {activeCategory.prompts.map((prompt, i) => (
+                    <motion.button
+                      key={prompt}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.06 }}
+                      onClick={() => sendMessage(prompt)}
+                      className="w-full text-left text-sm bg-white rounded-2xl px-4 py-3.5 border border-purple-50 text-slate-600 hover:border-violet-200 hover:bg-violet-50/40 transition-all flex items-center justify-between group shadow-sm"
+                    >
+                      <span>{prompt}</span>
+                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-violet-400 transition-colors flex-shrink-0 ml-2" />
+                    </motion.button>
+                  ))}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
 
         <AnimatePresence>
-          {messages.map((msg, i) => (
-            <ChatBubble key={i} message={msg} />
-          ))}
+          {messages.map((msg, i) => <ChatBubble key={i} message={msg} />)}
         </AnimatePresence>
 
         {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center gap-2"
-          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-rose-400 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs font-bold">AI</span>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-end gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center flex-shrink-0 shadow-md shadow-violet-200">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
             </div>
-            <div className="bg-white border border-slate-100 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
-              <div className="flex gap-1.5">
-                <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0 }} className="w-2 h-2 rounded-full bg-violet-300" />
-                <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-2 h-2 rounded-full bg-violet-300" />
-                <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-2 h-2 rounded-full bg-violet-300" />
+            <div className="bg-white border border-purple-50 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+              <div className="flex gap-1.5 items-center">
+                {[0, 0.18, 0.36].map((delay, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
+                    transition={{ repeat: Infinity, duration: 0.9, delay }}
+                    className="w-2 h-2 rounded-full bg-gradient-to-br from-violet-400 to-pink-400"
+                  />
+                ))}
               </div>
             </div>
           </motion.div>
         )}
-
         <div ref={chatEndRef} />
       </div>
 
       {/* Input */}
-      <div className="px-4 py-3 bg-white/80 backdrop-blur-md border-t border-slate-100">
+      <div className="px-4 py-3 bg-white/80 backdrop-blur-xl border-t border-purple-50 shadow-[0_-4px_16px_rgba(139,92,246,0.06)]">
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            sendMessage(input);
-          }}
-          className="flex items-center gap-2"
+          onSubmit={(e) => { e.preventDefault(); sendMessage(input); }}
+          className="flex items-end gap-2"
         >
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Luna anything..."
-            className="flex-1 bg-slate-50 rounded-xl px-4 py-3 text-sm border border-slate-200 focus:outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100 transition-all"
-          />
+          <div className="flex-1 bg-slate-50 rounded-2xl border border-purple-100 focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100 transition-all">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage(input);
+                }
+              }}
+              placeholder="Ask Luna anything about your cycle..."
+              rows={1}
+              className="w-full bg-transparent px-4 py-3 text-sm resize-none focus:outline-none text-slate-700 placeholder:text-slate-400"
+              style={{ maxHeight: 120 }}
+            />
+          </div>
           <Button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-rose-500 hover:from-violet-600 hover:to-rose-600 p-0 flex-shrink-0"
+            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 p-0 flex-shrink-0 shadow-md shadow-violet-200 disabled:opacity-50 disabled:shadow-none transition-all"
           >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 text-white animate-spin" />
-            ) : (
-              <Send className="w-4 h-4 text-white" />
-            )}
+            {isLoading
+              ? <Loader2 className="w-4 h-4 text-white animate-spin" />
+              : <Send className="w-4 h-4 text-white" />
+            }
           </Button>
         </form>
+        <p className="text-center text-[10px] text-slate-300 mt-2">
+          Shift + Enter for new line · Enter to send
+        </p>
       </div>
     </div>
   );

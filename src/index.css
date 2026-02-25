@@ -4,78 +4,76 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --background: 250 100% 99%;
+    --foreground: 240 20% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 240 20% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
+    --popover-foreground: 240 20% 12%;
+    --primary: 262 83% 58%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --secondary: 260 40% 96%;
+    --secondary-foreground: 262 60% 40%;
+    --muted: 260 30% 96%;
+    --muted-foreground: 240 10% 55%;
+    --accent: 260 40% 94%;
+    --accent-foreground: 262 60% 40%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --border: 260 20% 92%;
+    --input: 260 20% 92%;
+    --ring: 262 83% 58%;
+    --chart-1: 338 80% 60%;
+    --chart-2: 152 60% 45%;
+    --chart-3: 262 60% 55%;
+    --chart-4: 38 80% 60%;
+    --chart-5: 195 65% 55%;
+    --radius: 0.75rem;
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: 262 83% 58%;
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 260 40% 96%;
+    --sidebar-accent-foreground: 262 60% 40%;
+    --sidebar-border: 260 20% 92%;
+    --sidebar-ring: 262 83% 58%;
   }
 
   .dark {
-    --background: 0 0% 3.9%;
+    --background: 240 15% 8%;
     --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
+    --card: 240 15% 10%;
     --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
+    --popover: 240 15% 10%;
     --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
+    --primary: 262 70% 65%;
     --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
+    --secondary: 240 10% 18%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
+    --muted: 240 10% 18%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 10% 18%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --border: 240 10% 18%;
+    --input: 240 10% 18%;
+    --ring: 262 70% 65%;
+    --chart-1: 338 70% 55%;
+    --chart-2: 152 50% 45%;
+    --chart-3: 262 60% 55%;
+    --chart-4: 38 70% 55%;
+    --chart-5: 195 55% 50%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary: 262 70% 65%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 3.7% 15.9%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 262 70% 65%;
   }
 }
-
-
 
 @layer base {
   * {
@@ -84,5 +82,39 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: linear-gradient(160deg, #faf5ff 0%, #fff0f5 50%, #ffffff 100%);
+    background-attachment: fixed;
+  }
+}
+
+@layer utilities {
+  .flo-card {
+    @apply bg-white rounded-2xl shadow-sm border border-purple-50;
+  }
+
+  .flo-gradient {
+    background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  }
+
+  .flo-gradient-soft {
+    background: linear-gradient(135deg, #f3e8ff 0%, #fce7f3 100%);
+  }
+
+  .phase-period {
+    @apply bg-rose-100 text-rose-700;
+  }
+
+  .phase-follicular {
+    @apply bg-emerald-50 text-emerald-700;
+  }
+
+  .phase-ovulation {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .phase-luteal {
+    @apply bg-amber-50 text-amber-700;
   }
 }

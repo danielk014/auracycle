@@ -1,10 +1,9 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { ArrowLeft, Check, ChevronRight, Droplets, Heart, Brain, Pencil, Dumbbell, Moon, GlassWater, Zap } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import FlowPicker from "@/components/log/FlowPicker";
 import SymptomPicker from "@/components/log/SymptomPicker";
@@ -12,17 +11,22 @@ import MoodPicker from "@/components/log/MoodPicker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { getCycleSettings, createCycleLog, upsertCycleSettings } from "@/lib/db";
 
 const STEPS = ["flow", "symptoms", "mood", "lifestyle", "notes"];
 
 export default function LogEntry() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+
+  const dateParam = searchParams.get("date");
+  const logDate = dateParam ? new Date(dateParam + "T12:00:00") : new Date();
+
   const [step, setStep] = useState(0);
-  const [date] = useState(new Date());
   const [data, setData] = useState({
     flow_intensity: null,
+    is_period_end: false,
     symptoms: [],
     moods: [],
     notes: "",
@@ -36,49 +40,44 @@ export default function LogEntry() {
 
   const { data: settings } = useQuery({
     queryKey: ["cycleSettings"],
-    queryFn: async () => {
-      const list = await base44.entities.CycleSettings.list();
-      return list[0] || null;
-    },
+    queryFn: getCycleSettings,
   });
 
   const createLog = useMutation({
     mutationFn: async () => {
+      const dateStr = format(logDate, "yyyy-MM-dd");
       const shared = {
-        date: format(date, "yyyy-MM-dd"),
-        symptoms: data.symptoms,
-        moods: data.moods,
-        notes: data.notes,
-        sleep_hours: data.sleep_hours ? parseFloat(data.sleep_hours) : undefined,
-        sleep_quality: data.sleep_quality || undefined,
-        water_intake: data.water_intake ? parseInt(data.water_intake) : undefined,
-        exercise: data.exercise,
-        exercise_type: data.exercise_type !== "none" ? data.exercise_type : undefined,
-        stress_level: data.stress_level || undefined,
+        date: dateStr,
+        symptoms:      data.symptoms,
+        moods:         data.moods,
+        notes:         data.notes || null,
+        sleep_hours:   data.sleep_hours   ? parseFloat(data.sleep_hours)  : null,
+        sleep_quality: data.sleep_quality || null,
+        water_intake:  data.water_intake  ? parseInt(data.water_intake)   : null,
+        exercise:      data.exercise,
+        exercise_type: data.exercise_type !== "none" ? data.exercise_type : null,
+        stress_level:  data.stress_level  || null,
       };
-      const logs = [];
-      if (data.flow_intensity) {
-        logs.push({ ...shared, log_type: "period", flow_intensity: data.flow_intensity });
-        if (settings) {
-          await base44.entities.CycleSettings.update(settings.id, {
-            last_period_start: format(date, "yyyy-MM-dd"),
-          });
-        } else {
-          await base44.entities.CycleSettings.create({
-            last_period_start: format(date, "yyyy-MM-dd"),
-            average_cycle_length: 28,
-            average_period_length: 5,
-          });
-        }
-      } else {
-        logs.push({
-          ...shared,
-          log_type: data.symptoms.length > 0 ? "symptom" : data.moods.length > 0 ? "mood" : "note",
-        });
-      }
 
-      for (const log of logs) {
-        await base44.entities.CycleLog.create(log);
+      if (data.flow_intensity) {
+        // Period log
+        await createCycleLog({
+          ...shared,
+          log_type:       "period",
+          flow_intensity: data.flow_intensity,
+          is_period_end:  data.is_period_end,
+        });
+
+        // Update cycle settings with period start (and optional end)
+        const settingsUpdate = { last_period_start: dateStr };
+        if (data.is_period_end) settingsUpdate.last_period_end = dateStr;
+        await upsertCycleSettings(settingsUpdate);
+      } else {
+        const log_type =
+          data.symptoms.length > 0 ? "symptom"
+          : data.moods.length > 0  ? "mood"
+          : "note";
+        await createCycleLog({ ...shared, log_type });
       }
     },
     onSuccess: () => {
@@ -95,10 +94,36 @@ export default function LogEntry() {
       icon: Droplets,
       color: "text-rose-500",
       content: (
-        <FlowPicker
-          selected={data.flow_intensity}
-          onChange={(v) => setData({ ...data, flow_intensity: v })}
-        />
+        <div className="space-y-4">
+          <FlowPicker
+            selected={data.flow_intensity}
+            onChange={(v) => setData({ ...data, flow_intensity: v })}
+          />
+          {data.flow_intensity && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-pink-50 border border-pink-200 rounded-2xl px-4 py-3"
+            >
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div
+                  onClick={() => setData({ ...data, is_period_end: !data.is_period_end })}
+                  className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                    data.is_period_end
+                      ? "bg-rose-500 border-rose-500"
+                      : "bg-white border-rose-200"
+                  }`}
+                >
+                  {data.is_period_end && <Check className="w-3.5 h-3.5 text-white" />}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-rose-700">This is my last period day</p>
+                  <p className="text-xs text-rose-400">Log period end date</p>
+                </div>
+              </label>
+            </motion.div>
+          )}
+        </div>
       ),
     },
     symptoms: {
@@ -129,8 +154,7 @@ export default function LogEntry() {
       color: "text-emerald-500",
       content: (
         <div className="space-y-4">
-          {/* Sleep */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-100">
+          <div className="bg-white rounded-2xl p-4 border border-purple-50 shadow-sm">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-indigo-50 w-9 h-9 rounded-xl flex items-center justify-center">
                 <Moon className="w-4 h-4 text-indigo-500" />
@@ -142,11 +166,11 @@ export default function LogEntry() {
               placeholder="Hours (e.g. 7.5)"
               value={data.sleep_hours}
               onChange={(e) => setData({ ...data, sleep_hours: e.target.value })}
-              className="rounded-xl border-slate-200 mb-3"
+              className="rounded-xl border-purple-100 mb-3"
             />
             <p className="text-xs text-slate-400 mb-2">Sleep quality</p>
             <div className="flex gap-2">
-              {[1,2,3,4,5].map((v) => (
+              {[1, 2, 3, 4, 5].map((v) => (
                 <button
                   key={v}
                   onClick={() => setData({ ...data, sleep_quality: v })}
@@ -162,8 +186,7 @@ export default function LogEntry() {
             </div>
           </div>
 
-          {/* Exercise */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-100">
+          <div className="bg-white rounded-2xl p-4 border border-purple-50 shadow-sm">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-emerald-50 w-9 h-9 rounded-xl flex items-center justify-center">
                 <Dumbbell className="w-4 h-4 text-emerald-500" />
@@ -172,10 +195,10 @@ export default function LogEntry() {
             </div>
             <div className="grid grid-cols-4 gap-2">
               {[
-                { id: "none", label: "None", emoji: "🛋️" },
-                { id: "light", label: "Light", emoji: "🚶" },
+                { id: "none",     label: "None",     emoji: "🛋️" },
+                { id: "light",    label: "Light",    emoji: "🚶" },
                 { id: "moderate", label: "Moderate", emoji: "🏃" },
-                { id: "intense", label: "Intense", emoji: "🏋️" },
+                { id: "intense",  label: "Intense",  emoji: "🏋️" },
               ].map((e) => (
                 <button
                   key={e.id}
@@ -193,8 +216,7 @@ export default function LogEntry() {
             </div>
           </div>
 
-          {/* Stress */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-100">
+          <div className="bg-white rounded-2xl p-4 border border-purple-50 shadow-sm">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-rose-50 w-9 h-9 rounded-xl flex items-center justify-center">
                 <Zap className="w-4 h-4 text-rose-500" />
@@ -202,14 +224,16 @@ export default function LogEntry() {
               <span className="text-sm font-medium text-slate-700">Stress level</span>
             </div>
             <div className="flex gap-2">
-              {[1,2,3,4,5].map((v) => (
+              {[1, 2, 3, 4, 5].map((v) => (
                 <button
                   key={v}
                   onClick={() => setData({ ...data, stress_level: v })}
                   className={`flex-1 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${
                     data.stress_level === v
-                      ? v <= 2 ? "border-emerald-400 bg-emerald-50 text-emerald-700"
-                        : v === 3 ? "border-amber-400 bg-amber-50 text-amber-700"
+                      ? v <= 2
+                        ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                        : v === 3
+                        ? "border-amber-400 bg-amber-50 text-amber-700"
                         : "border-rose-400 bg-rose-50 text-rose-700"
                       : "border-slate-100 text-slate-400 hover:border-slate-200"
                   }`}
@@ -219,12 +243,12 @@ export default function LogEntry() {
               ))}
             </div>
             <div className="flex justify-between text-[10px] text-slate-300 mt-1 px-1">
-              <span>Low</span><span>High</span>
+              <span>Low</span>
+              <span>High</span>
             </div>
           </div>
 
-          {/* Water */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-100">
+          <div className="bg-white rounded-2xl p-4 border border-purple-50 shadow-sm">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-blue-50 w-9 h-9 rounded-xl flex items-center justify-center">
                 <GlassWater className="w-4 h-4 text-blue-500" />
@@ -236,7 +260,7 @@ export default function LogEntry() {
               placeholder="e.g. 8"
               value={data.water_intake}
               onChange={(e) => setData({ ...data, water_intake: e.target.value })}
-              className="rounded-xl border-slate-200"
+              className="rounded-xl border-purple-100"
             />
           </div>
         </div>
@@ -251,7 +275,7 @@ export default function LogEntry() {
           placeholder="Anything else you'd like to note..."
           value={data.notes}
           onChange={(e) => setData({ ...data, notes: e.target.value })}
-          className="min-h-[150px] rounded-2xl border-slate-200 resize-none"
+          className="min-h-[150px] rounded-2xl border-purple-100 resize-none"
         />
       ),
     },
@@ -261,24 +285,24 @@ export default function LogEntry() {
   const isLast = step === STEPS.length - 1;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white px-4 pt-4 pb-8 max-w-lg mx-auto">
+    <div className="min-h-screen px-4 pt-10 pb-8 max-w-lg mx-auto" style={{ background: "linear-gradient(160deg, #faf5ff 0%, #fff0f8 100%)" }}>
       <div className="flex items-center justify-between mb-6">
-        <Link to={createPageUrl("Home")} className="p-2 -ml-2 rounded-xl hover:bg-slate-100 transition-colors">
+        <Link to={createPageUrl("Home")} className="p-2 -ml-2 rounded-xl hover:bg-purple-50 transition-colors">
           <ArrowLeft className="w-5 h-5 text-slate-500" />
         </Link>
-        <p className="text-sm font-medium text-slate-500">
-          {format(date, "EEEE, MMMM d")}
+        <p className="text-sm font-semibold text-slate-600">
+          {format(logDate, "EEEE, MMMM d")}
         </p>
         <div className="w-9" />
       </div>
 
-      {/* Progress */}
+      {/* Progress bar */}
       <div className="flex gap-1.5 mb-8">
         {STEPS.map((_, i) => (
           <div
             key={i}
-            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-              i <= step ? "bg-rose-400" : "bg-slate-200"
+            className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+              i <= step ? "bg-gradient-to-r from-violet-500 to-pink-400" : "bg-slate-200"
             }`}
           />
         ))}
@@ -290,11 +314,11 @@ export default function LogEntry() {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.25 }}
+          transition={{ duration: 0.22 }}
         >
           <div className="flex items-center gap-2 mb-5">
             <current.icon className={`w-5 h-5 ${current.color}`} />
-            <h2 className="text-lg font-semibold text-slate-800">{current.title}</h2>
+            <h2 className="text-lg font-bold text-slate-800">{current.title}</h2>
           </div>
           {current.content}
         </motion.div>
@@ -305,7 +329,7 @@ export default function LogEntry() {
           <Button
             variant="outline"
             onClick={() => setStep(step - 1)}
-            className="flex-1 rounded-xl h-12"
+            className="flex-1 rounded-2xl h-12 border-purple-100"
           >
             Back
           </Button>
@@ -314,10 +338,10 @@ export default function LogEntry() {
           <Button
             onClick={() => createLog.mutate()}
             disabled={createLog.isPending}
-            className="flex-1 rounded-xl h-12 bg-gradient-to-r from-rose-400 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
+            className="flex-1 rounded-2xl h-12 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white shadow-lg shadow-violet-200"
           >
             {createLog.isPending ? (
-              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}>⏳</motion.div>
+              "Saving..."
             ) : (
               <><Check className="w-4 h-4 mr-2" /> Save Log</>
             )}
@@ -325,7 +349,7 @@ export default function LogEntry() {
         ) : (
           <Button
             onClick={() => setStep(step + 1)}
-            className="flex-1 rounded-xl h-12 bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-600 hover:to-violet-700 text-white"
+            className="flex-1 rounded-2xl h-12 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white shadow-lg shadow-violet-200"
           >
             Next <ChevronRight className="w-4 h-4 ml-1" />
           </Button>

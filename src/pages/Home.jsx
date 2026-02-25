@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
 import { differenceInDays, addDays, format } from "date-fns";
 import CycleWheel from "@/components/dashboard/CycleWheel";
 import QuickStats from "@/components/dashboard/QuickStats";
@@ -9,7 +8,10 @@ import DailyTip from "@/components/dashboard/DailyTip";
 import AIPrediction from "@/components/dashboard/AIPrediction";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Plus, MessageCircle } from "lucide-react";
+import { Plus, MessageCircle, CheckCircle, X } from "lucide-react";
+import { getCycleLogs, getCycleSettings, upsertCycleSettings } from "@/lib/db";
+import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 
 function getPhase(cycleDay, cycleLength, periodLength) {
   if (cycleDay <= periodLength) return "period";
@@ -19,21 +21,21 @@ function getPhase(cycleDay, cycleLength, periodLength) {
 }
 
 export default function Home() {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  const [showEndPeriod, setShowEndPeriod] = useState(true);
+
   const { data: settings } = useQuery({
     queryKey: ["cycleSettings"],
-    queryFn: async () => {
-      const list = await base44.entities.CycleSettings.list();
-      return list[0] || null;
-    },
+    queryFn: getCycleSettings,
   });
 
-  const { data: recentLogs } = useQuery({
+  const { data: recentLogs = [] } = useQuery({
     queryKey: ["recentLogs"],
-    queryFn: () => base44.entities.CycleLog.list("-date", 30),
-    initialData: [],
+    queryFn: () => getCycleLogs(30),
   });
 
-  const cycleLength = settings?.average_cycle_length || 28;
+  const cycleLength  = settings?.average_cycle_length  || 28;
   const periodLength = settings?.average_period_length || 5;
   const lastPeriodStart = settings?.last_period_start;
 
@@ -49,20 +51,65 @@ export default function Home() {
   }
 
   const phase = getPhase(cycleDay, cycleLength, periodLength);
-
   const [aiPrediction, setAiPrediction] = useState(null);
 
+  // Determine if user is currently in period and hasn't marked it ended
+  const isPeriodActive = phase === "period" && !settings?.last_period_end;
+  const isEndedToday = settings?.last_period_end === format(new Date(), "yyyy-MM-dd");
+
+  const markPeriodEnded = useMutation({
+    mutationFn: () =>
+      upsertCycleSettings({ last_period_end: format(new Date(), "yyyy-MM-dd") }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cycleSettings"] });
+      toast.success("Period marked as ended 🎉");
+      setShowEndPeriod(false);
+    },
+  });
+
   return (
-    <div className="pb-24 px-4 pt-2 max-w-lg mx-auto">
+    <div className="pb-28 px-4 pt-10 max-w-lg mx-auto">
+      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         className="text-center mb-6"
       >
-        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Luna</h1>
-        <p className="text-sm text-slate-400 mt-0.5">Your cycle companion</p>
+        <p className="text-sm text-slate-400 font-medium">
+          {profile?.display_name ? `Hey, ${profile.display_name} 👋` : "Welcome back 👋"}
+        </p>
+        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">AuraCycle</h1>
       </motion.div>
 
+      {/* "Mark period ended" banner */}
+      <AnimatePresence>
+        {isPeriodActive && showEndPeriod && !isEndedToday && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
+          >
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-rose-700">Has your period ended?</p>
+              <p className="text-xs text-rose-400 mt-0.5">Tap to log your period end date</p>
+            </div>
+            <button
+              onClick={() => markPeriodEnded.mutate()}
+              disabled={markPeriodEnded.isPending}
+              className="flex items-center gap-1.5 bg-rose-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-rose-600 transition-colors"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              Yes, ended
+            </button>
+            <button onClick={() => setShowEndPeriod(false)} className="text-rose-300 hover:text-rose-500">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Cycle wheel */}
       <div className="mb-6">
         <CycleWheel
           cycleDay={cycleDay}
@@ -71,25 +118,21 @@ export default function Home() {
           phase={phase}
           prediction={aiPrediction}
         />
-        {lastPeriodStart && (
+        {lastPeriodStart ? (
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.8 }}
             className="text-center text-sm text-slate-400 mt-3"
           >
-            Next period expected around <span className="font-semibold text-rose-400">{nextPeriodDate}</span>
+            Next period expected around{" "}
+            <span className="font-semibold text-rose-400">{nextPeriodDate}</span>
           </motion.p>
-        )}
-        {!lastPeriodStart && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center mt-4"
-          >
+        ) : (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center mt-4">
             <Link
               to={createPageUrl("Settings")}
-              className="text-sm text-violet-500 font-medium hover:text-violet-600 transition-colors"
+              className="text-sm text-violet-500 font-semibold hover:text-violet-600 transition-colors"
             >
               Set your last period date to get started →
             </Link>
@@ -107,9 +150,9 @@ export default function Home() {
       </div>
 
       <AIPrediction logs={recentLogs} settings={settings} onPrediction={setAiPrediction} />
-
       <DailyTip phase={phase} />
 
+      {/* FABs */}
       <div className="fixed bottom-24 right-4 flex flex-col gap-3 z-10">
         <Link
           to={createPageUrl("AIAssistant")}
