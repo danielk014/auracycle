@@ -4,9 +4,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Send, Sparkles, Loader2, RotateCcw, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { differenceInDays } from "date-fns";
+import { differenceInDays, format } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
+import {
+  buildCycles,
+  computeCycleStats,
+  predictNextPeriod,
+  getLateStatus,
+  detectIrregularity,
+  computeSymptomPatterns,
+  getFertileWindow,
+} from "@/lib/cycleStats";
 
 const SUGGESTION_CATEGORIES = [
   {
@@ -68,9 +77,10 @@ export default function AIAssistant() {
   const chatEndRef   = useRef(null);
   const textareaRef  = useRef(null);
 
+  // Fetch ALL logs — RLS at DB level guarantees this user only sees their own data
   const { data: logs = [] } = useQuery({
     queryKey: ["cycleLogs"],
-    queryFn: () => getCycleLogs(100),
+    queryFn: () => getCycleLogs(500),
   });
 
   const { data: settings } = useQuery({
@@ -92,47 +102,114 @@ export default function AIAssistant() {
   };
 
   const buildContext = () => {
-    const periodLogs  = logs.filter((l) => l.log_type === "period").slice(0, 15);
-    const symptomLogs = logs.filter((l) => l.symptoms?.length > 0).slice(0, 10);
-    const moodLogs    = logs.filter((l) => l.moods?.length > 0).slice(0, 10);
+    // All data is scoped to the authenticated user via Supabase RLS — no cross-user leakage
+    const today       = format(new Date(), "yyyy-MM-dd");
+    const periodLogs  = logs.filter((l) => l.log_type === "period");
+    const symptomLogs = logs.filter((l) => l.symptoms?.length > 0);
+    const moodLogs    = logs.filter((l) => l.moods?.length > 0);
+    const lifestyleLogs = logs.filter((l) => l.sleep_hours || l.stress_level || l.exercise);
 
-    let ctx = "=== User's Cycle & Health Data ===\n";
+    // Computed stats (pure JS, no API)
+    const cycles      = buildCycles(logs);
+    const stats       = computeCycleStats(cycles);
+    const prediction  = predictNextPeriod(cycles, settings);
+    const lateStatus  = getLateStatus(prediction, settings);
+    const irregularity = detectIrregularity(cycles);
+    const patterns    = computeSymptomPatterns(logs, cycles);
+    const fertile     = settings?.last_period_start
+      ? getFertileWindow(settings.last_period_start, stats.avg || settings?.average_cycle_length || 28)
+      : null;
 
+    let ctx = "=== User's Complete Cycle & Health Data ===\n";
+    ctx += `Today: ${today}\n\n`;
+
+    // ── Settings ──
     if (settings) {
-      ctx += `Cycle length: ${settings.average_cycle_length || 28} days\n`;
-      ctx += `Period length: ${settings.average_period_length || 5} days\n`;
+      ctx += "--- Settings ---\n";
+      ctx += `Cycle length (manual): ${settings.average_cycle_length || 28} days\n`;
+      ctx += `Period length (manual): ${settings.average_period_length || 5} days\n`;
       if (settings.last_period_start) {
         const daysSince = differenceInDays(new Date(), new Date(settings.last_period_start));
         const cycleDay  = (daysSince % (settings.average_cycle_length || 28)) + 1;
-        ctx += `Last period: ${settings.last_period_start} (${daysSince} days ago, now cycle day ${cycleDay})\n`;
+        ctx += `Last period start: ${settings.last_period_start} (${daysSince} days ago, cycle day ${cycleDay})\n`;
       }
-      if (settings.last_period_end) {
-        ctx += `Last period end: ${settings.last_period_end}\n`;
-      }
+      if (settings.last_period_end) ctx += `Last period end: ${settings.last_period_end}\n`;
     }
 
+    // ── Computed stats ──
+    ctx += "\n--- Computed Statistics ---\n";
+    if (stats.count >= 2) {
+      ctx += `Average cycle: ${stats.avg} days\n`;
+      ctx += `Cycle variation (std dev): ±${stats.stdDev} days\n`;
+      ctx += `Range: ${stats.min}–${stats.max} days across ${stats.count} cycles\n`;
+      if (stats.last3.length > 0) ctx += `Last 3 cycle lengths: ${stats.last3.join(", ")} days\n`;
+    }
+    if (prediction) {
+      ctx += `Predicted next period: ${prediction.predicted_date} (range: ${prediction.range_start} – ${prediction.range_end}, ${prediction.confidence} confidence)\n`;
+    }
+    if (lateStatus) {
+      ctx += `LATE PERIOD: ${lateStatus.daysLate} days late — ${lateStatus.message}\n`;
+    }
+    if (irregularity) {
+      ctx += `Cycle regularity: ${irregularity.isIrregular ? "IRREGULAR" : "regular"} — ${irregularity.message}\n`;
+    }
+    if (fertile) {
+      ctx += `Fertile window this cycle: ${fertile.startFormatted} – ${fertile.endFormatted} (ovulation est. ${fertile.ovulationFormatted})\n`;
+      if (fertile.isActive) ctx += "Note: User is currently in their fertile window.\n";
+    }
+
+    // ── Symptom patterns ──
+    if (patterns.length > 0) {
+      ctx += "\n--- Symptom Timing Patterns ---\n";
+      patterns.slice(0, 8).forEach((p) => {
+        ctx += `  • ${p.symptom}: typically ${p.typicalRange} of cycle (${p.count} occurrences)\n`;
+      });
+    }
+
+    // ── Period logs ──
     if (periodLogs.length > 0) {
-      ctx += "\nRecent period logs:\n";
-      periodLogs.slice(0, 8).forEach((l) => {
+      ctx += `\n--- Period Logs (${periodLogs.length} total, showing recent 12) ---\n`;
+      periodLogs.slice(0, 12).forEach((l) => {
         ctx += `  • ${l.date}: flow=${l.flow_intensity || "unspecified"}`;
         if (l.symptoms?.length) ctx += `, symptoms: ${l.symptoms.join(", ")}`;
+        if (l.stress_level) ctx += `, stress: ${l.stress_level}/5`;
+        if (l.sleep_quality) ctx += `, sleep: ${l.sleep_quality}/5`;
         ctx += "\n";
       });
     }
 
+    // ── Symptom logs ──
     if (symptomLogs.length > 0) {
-      ctx += "\nRecent symptoms:\n";
-      symptomLogs.slice(0, 6).forEach((l) => {
+      ctx += `\n--- Symptom Logs (${symptomLogs.length} total, showing recent 10) ---\n`;
+      symptomLogs.slice(0, 10).forEach((l) => {
         ctx += `  • ${l.date}: ${l.symptoms.join(", ")}`;
         if (l.stress_level) ctx += ` | stress: ${l.stress_level}/5`;
+        if (l.sleep_quality) ctx += ` | sleep quality: ${l.sleep_quality}/5`;
         ctx += "\n";
       });
     }
 
+    // ── Mood logs ──
     if (moodLogs.length > 0) {
-      ctx += "\nRecent moods:\n";
-      moodLogs.slice(0, 6).forEach((l) => {
-        ctx += `  • ${l.date}: ${l.moods.join(", ")}\n`;
+      ctx += `\n--- Mood Logs (${moodLogs.length} total, showing recent 10) ---\n`;
+      moodLogs.slice(0, 10).forEach((l) => {
+        ctx += `  • ${l.date}: ${l.moods.join(", ")}`;
+        if (l.notes) ctx += ` | note: "${l.notes.slice(0, 60)}"`;
+        ctx += "\n";
+      });
+    }
+
+    // ── Lifestyle data ──
+    if (lifestyleLogs.length > 0) {
+      ctx += `\n--- Lifestyle Logs (${lifestyleLogs.length} total, showing recent 8) ---\n`;
+      lifestyleLogs.slice(0, 8).forEach((l) => {
+        const parts = [];
+        if (l.sleep_hours) parts.push(`sleep: ${l.sleep_hours}h`);
+        if (l.sleep_quality) parts.push(`sleep quality: ${l.sleep_quality}/5`);
+        if (l.stress_level) parts.push(`stress: ${l.stress_level}/5`);
+        if (l.water_intake) parts.push(`water: ${l.water_intake}ml`);
+        if (l.exercise) parts.push(`exercise: ${l.exercise_type || "yes"}`);
+        ctx += `  • ${l.date}: ${parts.join(", ")}\n`;
       });
     }
 

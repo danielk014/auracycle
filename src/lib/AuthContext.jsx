@@ -10,15 +10,19 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        loadProfile(currentUser.id);
-      } else {
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+          loadProfile(currentUser.id);
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch(() => {
         setLoading(false);
-      }
-    });
+      });
 
     // Subscribe to auth changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(

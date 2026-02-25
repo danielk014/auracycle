@@ -8,8 +8,9 @@ import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
 import { useEffect } from "react";
-import { getCycleSettings } from "@/lib/db";
-import { checkPeriodNotification } from "@/lib/notifications";
+import { getCycleSettings, getCycleLogs } from "@/lib/db";
+import { checkAllNotifications } from "@/lib/notifications";
+import { buildCycles, predictNextPeriod } from "@/lib/cycleStats";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -22,8 +23,11 @@ function NotificationChecker() {
   useEffect(() => {
     const runCheck = async () => {
       try {
-        const settings = await getCycleSettings();
-        if (settings) checkPeriodNotification(settings);
+        const [settings, logs] = await Promise.all([getCycleSettings(), getCycleLogs(200)]);
+        if (!settings) return;
+        const cycles    = buildCycles(logs);
+        const prediction = predictNextPeriod(cycles, settings);
+        checkAllNotifications(settings, logs, prediction);
       } catch {}
     };
     const timer = setTimeout(runCheck, 2000);
