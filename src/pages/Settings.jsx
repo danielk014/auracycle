@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { getCycleSettings, upsertCycleSettings } from "@/lib/db";
 import { useAuth } from "@/lib/AuthContext";
 import { requestNotificationPermission } from "@/lib/notifications";
+import DatePicker from "@/components/ui/DatePicker";
 
 export default function Settings() {
   const { user, profile, logout } = useAuth();
@@ -121,26 +122,23 @@ export default function Settings() {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Last Period Start Date</Label>
-            <Input
-              type="date"
-              value={form.last_period_start}
-              onChange={(e) => setForm({ ...form, last_period_start: e.target.value })}
-              className="rounded-xl border-purple-100"
-            />
-          </div>
+          <DatePicker
+            label="Last Period Start Date"
+            value={form.last_period_start}
+            onChange={(v) => setForm({ ...form, last_period_start: v })}
+            maxDate={new Date()}
+            placeholder="Pick start date"
+          />
 
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Last Period End Date</Label>
-            <Input
-              type="date"
+          <div>
+            <DatePicker
+              label="Last Period End Date"
               value={form.last_period_end}
-              onChange={(e) => setForm({ ...form, last_period_end: e.target.value })}
-              className="rounded-xl border-purple-100"
-              min={form.last_period_start || undefined}
+              onChange={(v) => setForm({ ...form, last_period_end: v })}
+              maxDate={new Date()}
+              placeholder="Pick end date"
             />
-            <p className="text-xs text-slate-400">Set this to track how long your period lasted</p>
+            <p className="text-xs text-slate-400 mt-2">Set this to track how long your period lasted</p>
           </div>
         </div>
 

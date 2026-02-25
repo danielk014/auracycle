@@ -6,6 +6,7 @@ import { requestNotificationPermission } from "@/lib/notifications";
 import { format, subDays } from "date-fns";
 import { Sparkles, ChevronRight, Bell, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import DatePicker from "@/components/ui/DatePicker";
 
 const STEPS = ["welcome", "period", "reminders", "done"];
 
@@ -85,18 +86,13 @@ export default function Onboarding() {
       subtitle: "Help us understand your rhythm",
       content: (
         <div className="space-y-5">
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">
-              When did your last period start?
-            </label>
-            <input
-              type="date"
-              value={form.last_period_start}
-              onChange={(e) => setForm((f) => ({ ...f, last_period_start: e.target.value }))}
-              max={format(new Date(), "yyyy-MM-dd")}
-              className="w-full px-4 py-3 bg-slate-50 border border-purple-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 transition-all"
-            />
-          </div>
+          <DatePicker
+            label="When did your last period start?"
+            value={form.last_period_start}
+            onChange={(v) => setForm((f) => ({ ...f, last_period_start: v }))}
+            maxDate={new Date()}
+            placeholder="Pick a date"
+          />
 
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">

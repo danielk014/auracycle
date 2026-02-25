@@ -6,7 +6,6 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { differenceInDays } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
-import { Button } from "@/components/ui/button";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
 
 const SUGGESTION_CATEGORIES = [
@@ -201,7 +200,7 @@ export default function AIAssistant() {
             <h2 className="text-sm font-bold text-slate-800">Luna AI</h2>
             <p className="text-[11px] text-slate-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-              Powered by Claude Sonnet 4.5
+              Your health companion
             </p>
           </div>
         </div>
@@ -309,7 +308,7 @@ export default function AIAssistant() {
       </div>
 
       {/* Input */}
-      <div className="px-4 py-3 bg-white/80 backdrop-blur-xl border-t border-purple-50 shadow-[0_-4px_16px_rgba(139,92,246,0.06)]">
+      <div className="px-4 pt-3 pb-6 bg-white/90 backdrop-blur-xl border-t border-purple-50 shadow-[0_-4px_16px_rgba(139,92,246,0.06)]">
         <form
           onSubmit={(e) => { e.preventDefault(); sendMessage(input); }}
           className="flex items-end gap-2"
@@ -327,24 +326,21 @@ export default function AIAssistant() {
               }}
               placeholder="Ask Luna anything about your cycle..."
               rows={1}
-              className="w-full bg-transparent px-4 py-3 text-sm resize-none focus:outline-none text-slate-700 placeholder:text-slate-400"
-              style={{ maxHeight: 120 }}
+              className="w-full bg-transparent px-4 py-3 text-sm resize-none focus:outline-none text-slate-700 placeholder:text-slate-400 leading-relaxed"
+              style={{ maxHeight: 120, minHeight: 44 }}
             />
           </div>
-          <Button
+          <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 p-0 flex-shrink-0 shadow-md shadow-violet-200 disabled:opacity-50 disabled:shadow-none transition-all"
+            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 flex-shrink-0 shadow-md shadow-violet-200 disabled:opacity-40 disabled:shadow-none transition-all flex items-center justify-center"
           >
             {isLoading
               ? <Loader2 className="w-4 h-4 text-white animate-spin" />
               : <Send className="w-4 h-4 text-white" />
             }
-          </Button>
+          </button>
         </form>
-        <p className="text-center text-[10px] text-slate-300 mt-2">
-          Shift + Enter for new line · Enter to send
-        </p>
       </div>
     </div>
   );

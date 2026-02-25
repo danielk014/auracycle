@@ -24,10 +24,10 @@ const TYPE_META = {
 };
 
 const PHASE_INFO = {
-  period:     { label: "Menstrual Phase",   color: "text-rose-600",    bg: "bg-rose-50",    desc: "Your period is here. Rest and stay hydrated." },
-  follicular: { label: "Follicular Phase",  color: "text-emerald-600", bg: "bg-emerald-50", desc: "Energy rising! Great time for new starts." },
-  ovulation:  { label: "Ovulation Phase",   color: "text-green-600",   bg: "bg-green-50",   desc: "Peak fertility window. You're at your best!" },
-  luteal:     { label: "Luteal Phase",      color: "text-amber-600",   bg: "bg-amber-50",   desc: "Wind down and prepare for self-care." },
+  period:     { label: "Menstrual Phase",  color: "text-rose-600",   bg: "bg-rose-50",   desc: "Your period is here. Rest and stay hydrated." },
+  follicular: { label: "Follicular Phase", color: "text-emerald-600",bg: "bg-emerald-50",desc: "Energy rising! Great time for new starts." },
+  fertile:    { label: "Fertile Window 💗", color: "text-pink-600",   bg: "bg-pink-50",   desc: "Peak fertility! Your body is primed for conception." },
+  luteal:     { label: "Luteal Phase",     color: "text-yellow-700", bg: "bg-yellow-50", desc: "Wind down and prepare for self-care." },
 };
 
 function getDayPhase(day, settings) {
@@ -37,10 +37,10 @@ function getDayPhase(day, settings) {
   const daysSince = differenceInDays(day, new Date(settings.last_period_start));
   if (daysSince < 0) return null;
   const cycleDay = (daysSince % cycleLength) + 1;
-  if (cycleDay <= periodLength) return "period";
-  if (cycleDay >= cycleLength - 14 && cycleDay <= cycleLength - 14 + 5) return "ovulation";
-  if (cycleDay <= periodLength + 10) return "follicular";
-  return "luteal";
+  if (cycleDay <= periodLength)                                       return "period";
+  if (cycleDay >= cycleLength - 16 && cycleDay <= cycleLength - 11)  return "fertile";
+  if (cycleDay > cycleLength - 11)                                    return "luteal";
+  return "follicular";
 }
 
 export default function Calendar() {
