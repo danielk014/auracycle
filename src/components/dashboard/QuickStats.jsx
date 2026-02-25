@@ -8,20 +8,23 @@ export default function QuickStats({ nextPeriodIn, cycleLength, periodLength, la
       icon: Droplets,
       label: "Next Period",
       value: nextPeriodIn <= 0 ? "Today" : `${nextPeriodIn} days`,
+      sub: null,
       color: "text-rose-500",
       bg: "bg-rose-50",
     },
     {
       icon: Calendar,
-      label: cyclesCount >= 2 ? "Est. Cycle Length" : "Cycle Length",
+      label: "Avg Cycle Length",
       value: `${Math.round(cycleLength)} days`,
+      sub: cyclesCount >= 2 ? `${cyclesCount} cycles logged` : "Default · log more cycles",
       color: "text-violet-500",
       bg: "bg-violet-50",
     },
     {
       icon: Moon,
-      label: cyclesCount >= 1 ? "Avg Period Length" : "Period Length",
+      label: "Avg Period Length",
       value: `${periodLength} days`,
+      sub: cyclesCount >= 2 ? `Based on your data` : "Default · improve with data",
       color: "text-indigo-500",
       bg: "bg-indigo-50",
     },
@@ -29,6 +32,7 @@ export default function QuickStats({ nextPeriodIn, cycleLength, periodLength, la
       icon: Heart,
       label: "Last Period",
       value: lastPeriod || "Not set",
+      sub: null,
       color: "text-pink-500",
       bg: "bg-pink-50",
     },
@@ -49,6 +53,7 @@ export default function QuickStats({ nextPeriodIn, cycleLength, periodLength, la
           </div>
           <p className="text-xs text-slate-400 font-medium">{stat.label}</p>
           <p className="text-base font-semibold text-slate-800 mt-0.5">{stat.value}</p>
+          {stat.sub && <p className="text-[10px] text-slate-300 mt-0.5 leading-tight">{stat.sub}</p>}
         </motion.div>
       ))}
     </div>

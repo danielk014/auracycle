@@ -43,7 +43,8 @@ export default function Home() {
   const cycleLength  = computedStats.avg || settings?.average_cycle_length  || 28;
 
   // Average period length from actual logged cycles (span of consecutive period days)
-  const avgPeriodFromLogs = computedCycles.length > 0
+  // Require 2+ cycles before trusting the average (a single 1-day log would show "1 days")
+  const avgPeriodFromLogs = computedCycles.length >= 2
     ? Math.round(computedCycles.reduce((sum, c) => sum + c.periodLength, 0) / computedCycles.length)
     : null;
   const periodLength = avgPeriodFromLogs ?? settings?.average_period_length ?? 5;
@@ -163,7 +164,7 @@ export default function Home() {
       </div>
 
       <AIPrediction logs={recentLogs} settings={settings} onPrediction={setAiPrediction} />
-      <DailyTip phase={phase} />
+      <DailyTip phase={phase} cycleDay={cycleDay} />
 
       {/* FABs */}
       <div className="fixed bottom-24 right-4 flex flex-col gap-3 z-10">

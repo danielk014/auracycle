@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, addDays, parseISO } from "date-fns";
 import { ArrowLeft, Check, ChevronRight, Droplets, Heart, Brain, Pencil, Dumbbell, Moon, GlassWater, Zap } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -27,6 +27,7 @@ export default function LogEntry() {
 
   const [step, setStep] = useState(0);
   const [data, setData] = useState({
+    period_day_type: "mid",
     flow_intensity: null,
     is_period_end: false,
     symptoms: [],
@@ -61,33 +62,71 @@ export default function LogEntry() {
         stress_level:  data.stress_level  || null,
       };
 
-      if (data.flow_intensity) {
-        // Period log
+      const isFirstDay = data.period_day_type === "first";
+      const isLastDay  = data.period_day_type === "last";
+      const isPeriodLog = !!(data.flow_intensity) || isFirstDay || isLastDay;
+
+      if (isPeriodLog) {
+        const flow = data.flow_intensity || "medium";
+
+        // Always create the main log for the selected date
         await createCycleLog({
           ...shared,
           log_type:       "period",
-          flow_intensity: data.flow_intensity,
-          is_period_end:  data.is_period_end,
+          flow_intensity: flow,
+          is_period_end:  isLastDay,
         });
 
-        // Update last_period_start only when appropriate:
-        // - no start set yet  → always update
-        // - logged date is earlier than current start → update to the earlier date
-        // - logged date is a NEW cycle (>half a cycle away) → update to the new start
-        const currentStart = settings?.last_period_start;
-        const cycleLen = settings?.average_cycle_length || 28;
-        const daysFromStart = currentStart
-          ? differenceInDays(logDate, new Date(currentStart))
-          : -1;
-        const shouldUpdateStart =
-          !currentStart || daysFromStart < 0 || daysFromStart > cycleLen * 0.5;
+        if (isFirstDay) {
+          // Auto-fill the next (defaultPeriodLen - 1) days with basic period logs
+          const defaultLen = settings?.average_period_length || 5;
+          for (let i = 1; i < defaultLen; i++) {
+            try {
+              await createCycleLog({
+                date:           format(addDays(logDate, i), "yyyy-MM-dd"),
+                log_type:       "period",
+                flow_intensity: i >= defaultLen - 1 ? "light" : "medium",
+                symptoms: [], moods: [],
+              });
+            } catch { /* skip if already exists */ }
+          }
+          // First day always updates the period start
+          await upsertCycleSettings({ last_period_start: dateStr });
 
-        const settingsUpdate = {};
-        if (shouldUpdateStart) settingsUpdate.last_period_start = dateStr;
-        if (data.is_period_end) settingsUpdate.last_period_end = dateStr;
-        if (Object.keys(settingsUpdate).length > 0) {
-          await upsertCycleSettings(settingsUpdate);
+        } else if (isLastDay) {
+          // Fill in all missing days between last_period_start and this date
+          const startStr = settings?.last_period_start;
+          if (startStr && startStr < dateStr) {
+            let d = addDays(parseISO(startStr), 1);
+            let guard = 0;
+            while (format(d, "yyyy-MM-dd") < dateStr && guard++ < 30) {
+              try {
+                await createCycleLog({
+                  date: format(d, "yyyy-MM-dd"),
+                  log_type: "period",
+                  flow_intensity: "medium",
+                  symptoms: [], moods: [],
+                });
+              } catch { /* skip duplicates */ }
+              d = addDays(d, 1);
+            }
+          }
+          await upsertCycleSettings({ last_period_end: dateStr });
+
+        } else {
+          // Regular mid-period day: smart last_period_start update
+          const currentStart = settings?.last_period_start;
+          const cycleLen = settings?.average_cycle_length || 28;
+          const daysFromStart = currentStart
+            ? differenceInDays(logDate, new Date(currentStart))
+            : -1;
+          const shouldUpdateStart =
+            !currentStart || daysFromStart < 0 || daysFromStart > cycleLen * 0.5;
+          if (shouldUpdateStart) {
+            await upsertCycleSettings({ last_period_start: dateStr });
+          }
         }
+
       } else {
         const log_type =
           data.symptoms.length > 0 ? "symptom"
@@ -111,34 +150,59 @@ export default function LogEntry() {
       color: "text-rose-500",
       content: (
         <div className="space-y-4">
+          {/* Period day type */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: "first", emoji: "🌸", label: "First Day",  desc: "Start of period" },
+              { id: "mid",   emoji: "🩸", label: "Period Day", desc: "Ongoing" },
+              { id: "last",  emoji: "✨", label: "Last Day",   desc: "End of period" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setData({ ...data, period_day_type: t.id })}
+                className={`flex flex-col items-center py-3 rounded-2xl border-2 text-xs font-semibold transition-all ${
+                  data.period_day_type === t.id
+                    ? "border-rose-400 bg-rose-50 text-rose-700"
+                    : "border-slate-100 text-slate-500 hover:border-slate-200 bg-white"
+                }`}
+              >
+                <span className="text-xl mb-1">{t.emoji}</span>
+                <span className="font-bold">{t.label}</span>
+                <span className="text-[10px] font-normal text-slate-400 mt-0.5">{t.desc}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Auto-fill notice */}
+          {data.period_day_type === "first" && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-rose-50 border border-rose-100 rounded-xl px-3 py-2 text-xs text-rose-600 flex items-start gap-2"
+            >
+              <span>🌸</span>
+              <span>We'll automatically fill in the next {(settings?.average_period_length || 5) - 1} days as period days for you.</span>
+            </motion.div>
+          )}
+          {data.period_day_type === "last" && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-rose-50 border border-rose-100 rounded-xl px-3 py-2 text-xs text-rose-600 flex items-start gap-2"
+            >
+              <span>✨</span>
+              <span>
+                {settings?.last_period_start
+                  ? `We'll fill in all days from your period start to today.`
+                  : "Log this as your last period day."}
+              </span>
+            </motion.div>
+          )}
+
           <FlowPicker
             selected={data.flow_intensity}
             onChange={(v) => setData({ ...data, flow_intensity: v })}
           />
-          {data.flow_intensity && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-pink-50 border border-pink-200 rounded-2xl px-4 py-3"
-            >
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => setData({ ...data, is_period_end: !data.is_period_end })}
-                  className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                    data.is_period_end
-                      ? "bg-rose-500 border-rose-500"
-                      : "bg-white border-rose-200"
-                  }`}
-                >
-                  {data.is_period_end && <Check className="w-3.5 h-3.5 text-white" />}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-rose-700">This is my last period day</p>
-                  <p className="text-xs text-rose-400">Log period end date</p>
-                </div>
-              </label>
-            </motion.div>
-          )}
         </div>
       ),
     },
