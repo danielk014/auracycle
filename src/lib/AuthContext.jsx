@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
+import { clearSettingsCache } from "./db";
 
 const AuthContext = createContext(null);
 
@@ -131,10 +132,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    // Clear profile cache so the next login starts fresh
+    // Clear all caches so the next login starts fresh
     if (user?.id) {
       localStorage.removeItem(profileCacheKey(user.id));
     }
+    clearSettingsCache();
     await supabase.auth.signOut();
     setUser(null);
     profileRef.current = null;

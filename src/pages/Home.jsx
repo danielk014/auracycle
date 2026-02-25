@@ -9,7 +9,7 @@ import AIPrediction from "@/components/dashboard/AIPrediction";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Plus, MessageCircle, CheckCircle, X } from "lucide-react";
-import { getCycleLogs, getCycleSettings, upsertCycleSettings } from "@/lib/db";
+import { getCycleLogs, getCycleSettings, getCycleSettingsCache, upsertCycleSettings } from "@/lib/db";
 import { useAuth } from "@/lib/AuthContext";
 import { buildCycles, computeCycleStats } from "@/lib/cycleStats";
 import { toast } from "sonner";
@@ -24,11 +24,17 @@ function getPhase(cycleDay, cycleLength, periodLength) {
 export default function Home() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const [showEndPeriod, setShowEndPeriod] = useState(true);
+
+  // Dismiss banner once per calendar day — comes back fresh the next day
+  const todayKey = `period_banner_dismissed_${format(new Date(), "yyyy-MM-dd")}`;
+  const [showEndPeriod, setShowEndPeriod] = useState(() => {
+    try { return !localStorage.getItem(todayKey); } catch { return true; }
+  });
 
   const { data: settings } = useQuery({
     queryKey: ["cycleSettings"],
     queryFn: getCycleSettings,
+    initialData: getCycleSettingsCache,
   });
 
   const { data: recentLogs = [] } = useQuery({
@@ -113,7 +119,7 @@ export default function Home() {
               <CheckCircle className="w-3.5 h-3.5" />
               Yes, ended
             </button>
-            <button onClick={() => setShowEndPeriod(false)} className="text-rose-300 hover:text-rose-500">
+            <button onClick={() => { try { localStorage.setItem(todayKey, "1"); } catch {} setShowEndPeriod(false); }} className="text-rose-300 hover:text-rose-500">
               <X className="w-4 h-4" />
             </button>
           </motion.div>

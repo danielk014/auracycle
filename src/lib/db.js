@@ -4,6 +4,8 @@
  */
 import { supabase } from "./supabaseClient";
 
+const SETTINGS_CACHE_KEY = "aura_cycle_settings";
+
 // ─── CYCLE LOGS ───────────────────────────────────────────────
 
 export async function getCycleLogs(limit = 200) {
@@ -48,12 +50,24 @@ export async function updateCycleLog(id, logData) {
 
 // ─── CYCLE SETTINGS ───────────────────────────────────────────
 
+export function getCycleSettingsCache() {
+  try {
+    const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
+    return cached ? JSON.parse(cached) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getCycleSettings() {
   const { data, error } = await supabase
     .from("cycle_settings")
     .select("*")
     .maybeSingle();
   if (error) throw error;
+  if (data) {
+    try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(data)); } catch {}
+  }
   return data ?? null;
 }
 
@@ -68,7 +82,14 @@ export async function upsertCycleSettings(settingsData) {
     .select()
     .single();
   if (error) throw error;
+  if (data) {
+    try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(data)); } catch {}
+  }
   return data;
+}
+
+export function clearSettingsCache() {
+  try { localStorage.removeItem(SETTINGS_CACHE_KEY); } catch {}
 }
 
 // ─── PROFILES ─────────────────────────────────────────────────
