@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { ArrowLeft, Check, ChevronRight, Droplets, Heart, Brain, Pencil, Dumbbell, Moon, GlassWater, Zap } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -21,7 +21,9 @@ export default function LogEntry() {
   const [searchParams] = useSearchParams();
 
   const dateParam = searchParams.get("date");
-  const logDate = dateParam ? new Date(dateParam + "T12:00:00") : new Date();
+  const [logDate, setLogDate] = useState(
+    dateParam ? new Date(dateParam + "T12:00:00") : new Date()
+  );
 
   const [step, setStep] = useState(0);
   const [data, setData] = useState({
@@ -68,10 +70,24 @@ export default function LogEntry() {
           is_period_end:  data.is_period_end,
         });
 
-        // Update cycle settings with period start (and optional end)
-        const settingsUpdate = { last_period_start: dateStr };
+        // Update last_period_start only when appropriate:
+        // - no start set yet  → always update
+        // - logged date is earlier than current start → update to the earlier date
+        // - logged date is a NEW cycle (>half a cycle away) → update to the new start
+        const currentStart = settings?.last_period_start;
+        const cycleLen = settings?.average_cycle_length || 28;
+        const daysFromStart = currentStart
+          ? differenceInDays(logDate, new Date(currentStart))
+          : -1;
+        const shouldUpdateStart =
+          !currentStart || daysFromStart < 0 || daysFromStart > cycleLen * 0.5;
+
+        const settingsUpdate = {};
+        if (shouldUpdateStart) settingsUpdate.last_period_start = dateStr;
         if (data.is_period_end) settingsUpdate.last_period_end = dateStr;
-        await upsertCycleSettings(settingsUpdate);
+        if (Object.keys(settingsUpdate).length > 0) {
+          await upsertCycleSettings(settingsUpdate);
+        }
       } else {
         const log_type =
           data.symptoms.length > 0 ? "symptom"
@@ -290,9 +306,22 @@ export default function LogEntry() {
         <Link to={createPageUrl("Home")} className="p-2 -ml-2 rounded-xl hover:bg-purple-50 transition-colors">
           <ArrowLeft className="w-5 h-5 text-slate-500" />
         </Link>
-        <p className="text-sm font-semibold text-slate-600">
-          {format(logDate, "EEEE, MMMM d")}
-        </p>
+        {/* Tappable date — shows native date picker on tap */}
+        <div className="relative flex items-center gap-1 cursor-pointer">
+          <p className="text-sm font-semibold text-slate-600">
+            {format(logDate, "EEEE, MMMM d")}
+          </p>
+          <span className="text-[9px] text-violet-400 font-normal">tap to change</span>
+          <input
+            type="date"
+            className="absolute inset-0 opacity-0 cursor-pointer w-full"
+            value={format(logDate, "yyyy-MM-dd")}
+            max={format(new Date(), "yyyy-MM-dd")}
+            onChange={(e) => {
+              if (e.target.value) setLogDate(new Date(e.target.value + "T12:00:00"));
+            }}
+          />
+        </div>
         <div className="w-9" />
       </div>
 

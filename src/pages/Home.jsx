@@ -119,15 +119,17 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Cycle wheel */}
+      {/* Cycle wheel — tap to go to Calendar */}
       <div className="mb-6">
-        <CycleWheel
-          cycleDay={cycleDay}
-          cycleLength={cycleLength}
-          periodLength={periodLength}
-          phase={phase}
-          prediction={aiPrediction}
-        />
+        <Link to={createPageUrl("Calendar")} className="block">
+          <CycleWheel
+            cycleDay={cycleDay}
+            cycleLength={cycleLength}
+            periodLength={periodLength}
+            phase={phase}
+            prediction={aiPrediction}
+          />
+        </Link>
         {lastPeriodStart ? (
           <motion.p
             initial={{ opacity: 0 }}
