@@ -8,34 +8,38 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Prevents double-processing the initial session when both getSession() and
-  // INITIAL_SESSION fire around the same time.
-  const initialised = useRef(false);
+  const initialised  = useRef(false);
+  // Keep a ref of the current profile so we never wipe it on a background re-fetch failure
+  const profileRef   = useRef(null);
 
-  // loadProfile has its own 3-second Promise.race timeout so a slow/hung DB
-  // query can never keep loading=true indefinitely.
-  const loadProfile = async (userId) => {
+  const loadProfile = async (userId, { isInitial = false } = {}) => {
     try {
       const { data } = await Promise.race([
         supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("profile_timeout")), 3000)
+          setTimeout(() => reject(new Error("profile_timeout")), 5000)
         ),
       ]);
+      profileRef.current = data ?? null;
       setProfile(data ?? null);
     } catch {
-      setProfile(null);
+      // On initial load with no cached profile, clear it.
+      // On background re-fetches (TOKEN_REFRESHED etc.) keep what we have —
+      // this prevents the onboarding flash when a background refresh times out.
+      if (isInitial) {
+        profileRef.current = null;
+        setProfile(null);
+      }
+      // else: silently keep existing profile
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Layer 3: Absolute hard cap — loading can never stay true beyond 4 seconds.
     const safetyTimer = setTimeout(() => setLoading(false), 4000);
 
-    // Layer 1: getSession() — reads localStorage first, fast.
-    // Only does a network call if the token needs refreshing.
+    // Fast path — getSession() reads localStorage then optionally refreshes
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
         if (initialised.current) return;
@@ -43,7 +47,7 @@ export const AuthProvider = ({ children }) => {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
         if (currentUser) {
-          loadProfile(currentUser.id);
+          loadProfile(currentUser.id, { isInitial: true });
         } else {
           setLoading(false);
         }
@@ -55,32 +59,42 @@ export const AuthProvider = ({ children }) => {
         }
       });
 
-    // Layer 2: onAuthStateChange — covers INITIAL_SESSION, SIGNED_IN, SIGNED_OUT,
-    // TOKEN_REFRESHED, and all subsequent auth events.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         const currentUser = session?.user ?? null;
 
         if (event === "INITIAL_SESSION") {
-          // Deduplicate with getSession() — whichever fires first wins.
           if (initialised.current) return;
           initialised.current = true;
           setUser(currentUser);
           if (currentUser) {
-            await loadProfile(currentUser.id);
+            await loadProfile(currentUser.id, { isInitial: true });
           } else {
             setLoading(false);
           }
           return;
         }
 
-        // All other events (login, logout, token refresh) — update state directly.
-        setUser(currentUser);
-        if (currentUser) {
-          await loadProfile(currentUser.id);
-        } else {
+        if (event === "SIGNED_OUT") {
+          setUser(null);
+          profileRef.current = null;
           setProfile(null);
           setLoading(false);
+          return;
+        }
+
+        if (event === "TOKEN_REFRESHED") {
+          // Token refresh doesn't change user data — just update the user object.
+          // Do NOT re-fetch the profile; that would wipe it on a timeout and
+          // send the user back to onboarding mid-session.
+          setUser(currentUser);
+          return;
+        }
+
+        // SIGNED_IN (after login), USER_UPDATED, PASSWORD_RECOVERY
+        setUser(currentUser);
+        if (currentUser) {
+          await loadProfile(currentUser.id, { isInitial: !profileRef.current });
         }
       }
     );
@@ -92,12 +106,13 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const refreshProfile = async () => {
-    if (user) await loadProfile(user.id);
+    if (user) await loadProfile(user.id, { isInitial: false });
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    profileRef.current = null;
     setProfile(null);
   };
 
