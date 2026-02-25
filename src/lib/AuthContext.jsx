@@ -3,6 +3,8 @@ import { supabase } from "./supabaseClient";
 
 const AuthContext = createContext(null);
 
+const profileCacheKey = (userId) => `aura_profile_${userId}`;
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(null);
@@ -13,6 +15,19 @@ export const AuthProvider = ({ children }) => {
   const profileRef   = useRef(null);
 
   const loadProfile = async (userId, { isInitial = false } = {}) => {
+    // On initial load, immediately restore from cache to avoid any onboarding flash
+    if (isInitial) {
+      try {
+        const cached = localStorage.getItem(profileCacheKey(userId));
+        if (cached) {
+          const cachedProfile = JSON.parse(cached);
+          profileRef.current = cachedProfile;
+          setProfile(cachedProfile);
+          setLoading(false); // stop spinner right away — we have enough to render
+        }
+      } catch {}
+    }
+
     try {
       const { data } = await Promise.race([
         supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
@@ -22,11 +37,17 @@ export const AuthProvider = ({ children }) => {
       ]);
       profileRef.current = data ?? null;
       setProfile(data ?? null);
+      // Keep cache up-to-date for the next load
+      if (data) {
+        localStorage.setItem(profileCacheKey(userId), JSON.stringify(data));
+      } else {
+        localStorage.removeItem(profileCacheKey(userId));
+      }
     } catch {
       // On initial load with no cached profile, clear it.
       // On background re-fetches (TOKEN_REFRESHED etc.) keep what we have —
       // this prevents the onboarding flash when a background refresh times out.
-      if (isInitial) {
+      if (isInitial && !profileRef.current) {
         profileRef.current = null;
         setProfile(null);
       }
@@ -110,6 +131,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    // Clear profile cache so the next login starts fresh
+    if (user?.id) {
+      localStorage.removeItem(profileCacheKey(user.id));
+    }
     await supabase.auth.signOut();
     setUser(null);
     profileRef.current = null;
