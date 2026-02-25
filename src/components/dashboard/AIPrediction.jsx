@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Loader2, TrendingUp, AlertTriangle, Info } from "lucide-react";
+import { Sparkles, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { parseISO, format, differenceInDays } from "date-fns";
 import {
   buildCycles,
@@ -11,10 +11,9 @@ import {
 } from "@/lib/cycleStats";
 
 export default function AIPrediction({ logs, settings, onPrediction }) {
-  const [aiInsight, setAiInsight]   = useState(null);
-  const [loading, setLoading]       = useState(false);
-  const [fetched, setFetched]       = useState(false);
-  const [showStats, setShowStats]   = useState(false);
+  const [aiInsight, setAiInsight] = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [fetched, setFetched]     = useState(false);
 
   // ── Local stats (instant, no API) ───────────────────────────
   const cycles      = buildCycles(logs);
@@ -217,64 +216,52 @@ Respond with JSON only:
             <p className="text-xs text-slate-400 mt-1">• {aiInsight.pattern_note}</p>
           )}
 
-          {/* Stats toggle */}
+          {/* ── Cycle stats (always visible when data available) ── */}
           {stats.count >= 2 && (
-            <button
-              onClick={() => setShowStats((s) => !s)}
-              className="mt-3 text-[11px] text-violet-400 hover:text-violet-600 flex items-center gap-1 transition-colors"
-            >
-              <TrendingUp className="w-3 h-3" />
-              {showStats ? "Hide" : "Show"} cycle stats
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Cycle stats panel (expandable) ────────────────── */}
-      <AnimatePresence>
-        {showStats && stats.count >= 2 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="bg-white rounded-2xl p-4 border border-purple-50 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-4 h-4 text-violet-400" />
-                <span className="text-xs font-bold text-slate-700">Cycle Statistics</span>
-              </div>
-              <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="mt-3 pt-3 border-t border-violet-100/60">
+              <div className="grid grid-cols-3 gap-2 mb-2">
                 {[
-                  { label: "Avg length", value: stats.avg ? `${stats.avg}d` : "—" },
-                  { label: "Variation", value: stats.stdDev !== null ? `±${stats.stdDev}d` : "—" },
-                  { label: "Cycles tracked", value: stats.count },
+                  { label: "Avg length", value: stats.avg ? `${stats.avg}d` : "—", color: "text-violet-600" },
+                  { label: "Variation",  value: stats.stdDev !== null ? `±${stats.stdDev}d` : "—", color: "text-amber-600" },
+                  { label: "Tracked",    value: `${stats.count} cycles`, color: "text-slate-600" },
                 ].map((s) => (
-                  <div key={s.label} className="text-center">
-                    <p className="text-base font-bold text-slate-800">{s.value}</p>
-                    <p className="text-[10px] text-slate-400">{s.label}</p>
+                  <div key={s.label} className="text-center bg-white/60 rounded-xl py-2">
+                    <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-[9px] text-slate-400 mt-0.5">{s.label}</p>
                   </div>
                 ))}
               </div>
               {stats.last3.length > 0 && (
-                <div>
-                  <p className="text-[10px] text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Last 3 cycle lengths</p>
-                  <div className="flex gap-2">
-                    {stats.last3.map((len, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 bg-violet-50 rounded-xl py-2 text-center"
-                      >
-                        <span className="text-sm font-bold text-violet-600">{len}d</span>
-                      </div>
-                    ))}
+                <>
+                  <p className="text-[9px] text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Last 3 cycles</p>
+                  <div className="flex gap-1.5">
+                    {stats.last3.map((len, i) => {
+                      const isLong  = stats.avg && len > stats.avg + 2;
+                      const isShort = stats.avg && len < stats.avg - 2;
+                      return (
+                        <div
+                          key={i}
+                          className={`flex-1 rounded-xl py-1.5 text-center ${
+                            isLong  ? "bg-amber-100"  :
+                            isShort ? "bg-blue-100"   :
+                                      "bg-violet-100"
+                          }`}
+                        >
+                          <span className={`text-xs font-bold ${
+                            isLong  ? "text-amber-700"  :
+                            isShort ? "text-blue-700"   :
+                                      "text-violet-700"
+                          }`}>{len}d</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
+                </>
               )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </div>
+      )}
 
       {/* ── Irregularity flag ─────────────────────────────── */}
       <AnimatePresence>

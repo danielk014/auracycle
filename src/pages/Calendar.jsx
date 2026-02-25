@@ -7,6 +7,7 @@ import { Droplets, Brain, Heart, Pencil, Plus, Moon, Dumbbell, Droplet, Activity
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
+import { buildCycles, computeCycleStats, predictNextPeriod, getFertileWindow } from "@/lib/cycleStats";
 
 const LOG_TYPES = [
   { key: "all", label: "All" },
@@ -56,6 +57,17 @@ export default function Calendar() {
     queryKey: ["cycleSettings"],
     queryFn: getCycleSettings,
   });
+
+  // Compute prediction + fertile window from logged data
+  const cycles     = buildCycles(logs);
+  const cycleStats = computeCycleStats(cycles);
+  const prediction = predictNextPeriod(cycles, settings);
+  const avgLen     = cycleStats.avg || settings?.average_cycle_length || 28;
+  const fertile    = prediction?.predicted_date
+    ? getFertileWindow(prediction.predicted_date, avgLen)
+    : settings?.last_period_start
+    ? getFertileWindow(settings.last_period_start, avgLen)
+    : null;
 
   const selectedLogs = selectedDay
     ? logs.filter((l) => isSameDay(new Date(l.date), selectedDay))
@@ -122,6 +134,8 @@ export default function Calendar() {
         <CycleCalendar
           logs={logs}
           settings={settings}
+          prediction={prediction}
+          fertileWindow={fertile}
           onDayClick={setSelectedDay}
           selectedDay={selectedDay}
         />

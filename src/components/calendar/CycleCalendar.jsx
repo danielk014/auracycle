@@ -12,9 +12,11 @@ import {
   isSameDay,
   isToday,
   differenceInDays,
+  parseISO,
+  isWithinInterval,
 } from "date-fns";
 
-// Returns the cycle phase for a given day based on user settings
+// Returns the cycle phase for a given day based on user settings (current cycle)
 function getDayPhase(day, settings) {
   if (!settings?.last_period_start) return null;
   const cycleLength  = settings.average_cycle_length  || 28;
@@ -24,31 +26,41 @@ function getDayPhase(day, settings) {
   if (daysSince < 0) return null;
   const cycleDay = (daysSince % cycleLength) + 1;
 
-  if (cycleDay <= periodLength)                                            return "period";
-  // Fertile window: ~5 days before ovulation (day 14 by default) + ovulation day
-  if (cycleDay >= cycleLength - 16 && cycleDay <= cycleLength - 11)       return "fertile";
-  // Luteal: after ovulation until end of cycle
-  if (cycleDay > cycleLength - 11)                                        return "luteal";
+  if (cycleDay <= periodLength)                                       return "period";
+  if (cycleDay >= cycleLength - 16 && cycleDay <= cycleLength - 11)  return "fertile";
+  if (cycleDay > cycleLength - 11)                                    return "luteal";
   return "follicular";
 }
 
-const DAY_STYLES = {
-  period:     { bg: "bg-rose-100",   text: "text-rose-700",   dot: "bg-rose-400" },
-  fertile:    { bg: "bg-pink-50",    text: "text-pink-700",   dot: "bg-pink-400" },
-  luteal:     { bg: "bg-yellow-50",  text: "text-yellow-700", dot: "bg-yellow-400" },
-  follicular: { bg: "bg-emerald-50", text: "text-emerald-700",dot: "bg-emerald-400" },
-};
+// Is this day within the predicted next period range?
+function isPredictedPeriodDay(day, prediction) {
+  if (!prediction?.range_start || !prediction?.range_end) return false;
+  try {
+    return isWithinInterval(day, {
+      start: parseISO(prediction.range_start),
+      end:   parseISO(prediction.range_end),
+    });
+  } catch { return false; }
+}
 
-const LEGEND = [
-  { label: "Period",    emoji: "🩸", color: "bg-rose-200" },
-  { label: "Fertile",  emoji: "💗", color: "bg-pink-200" },
-  { label: "Luteal",   emoji: null, color: "bg-yellow-200" },
-  { label: "Logged",   emoji: null, color: "bg-violet-200" },
-];
+// Is this day the exact predicted period date?
+function isPredictedMidDay(day, prediction) {
+  if (!prediction?.predicted_date) return false;
+  try { return isSameDay(day, parseISO(prediction.predicted_date)); }
+  catch { return false; }
+}
+
+// Is this day within the next fertile window?
+function isNextFertileDay(day, fertileWindow) {
+  if (!fertileWindow?.start || !fertileWindow?.end) return false;
+  try {
+    return isWithinInterval(day, { start: fertileWindow.start, end: fertileWindow.end });
+  } catch { return false; }
+}
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
-export default function CycleCalendar({ logs = [], settings, onDayClick, selectedDay }) {
+export default function CycleCalendar({ logs = [], settings, prediction, fertileWindow, onDayClick, selectedDay }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const monthStart   = startOfMonth(currentMonth);
@@ -96,22 +108,36 @@ export default function CycleCalendar({ logs = [], settings, onDayClick, selecte
         ))}
 
         {days.map((day) => {
-          const dayLogs    = getLogsForDay(day);
-          const isPeriod   = dayLogs.some((l) => l.log_type === "period");
-          const hasSymptom = dayLogs.some((l) => l.symptoms?.length > 0);
-          const hasMood    = dayLogs.some((l) => l.moods?.length > 0);
-          const hasNote    = dayLogs.some((l) => l.log_type === "note" || l.notes);
-          const hasLog     = dayLogs.length > 0;
-          const today      = isToday(day);
-          const isSelected = selectedDay && isSameDay(day, selectedDay);
-          const phase      = getDayPhase(day, settings);
+          const dayLogs      = getLogsForDay(day);
+          const isPeriod     = dayLogs.some((l) => l.log_type === "period");
+          const hasSymptom   = dayLogs.some((l) => l.symptoms?.length > 0);
+          const hasMood      = dayLogs.some((l) => l.moods?.length > 0);
+          const hasLog       = dayLogs.length > 0;
+          const today        = isToday(day);
+          const isSelected   = selectedDay && isSameDay(day, selectedDay);
+          const phase        = getDayPhase(day, settings);
 
-          // Background based on logged period vs predicted phase
+          // Prediction overlays (only when not logged)
+          const predPeriod   = !isPeriod && isPredictedPeriodDay(day, prediction);
+          const predMid      = !isPeriod && isPredictedMidDay(day, prediction);
+          const nextFertile  = !isPeriod && !predPeriod && isNextFertileDay(day, fertileWindow);
+
+          // Background priority: logged period → predicted period → current fertile → phases
           let bg   = "";
           let text = "text-slate-600";
+
           if (isPeriod) {
             bg   = "bg-rose-100";
             text = "text-rose-700 font-bold";
+          } else if (predMid) {
+            bg   = "bg-rose-200";
+            text = "text-rose-800 font-bold";
+          } else if (predPeriod) {
+            bg   = "bg-rose-50 border border-rose-200 border-dashed";
+            text = "text-rose-600";
+          } else if (nextFertile) {
+            bg   = "bg-emerald-50 border border-emerald-200 border-dashed";
+            text = "text-emerald-700";
           } else if (phase === "fertile") {
             bg   = "bg-pink-50";
             text = "text-pink-700";
@@ -123,8 +149,7 @@ export default function CycleCalendar({ logs = [], settings, onDayClick, selecte
             text = "text-emerald-700";
           }
 
-          // Fertile window gets heart emoji overlay
-          const isFertile = !isPeriod && phase === "fertile";
+          const isFertile = !isPeriod && !predPeriod && !nextFertile && phase === "fertile";
 
           return (
             <motion.button
@@ -138,10 +163,10 @@ export default function CycleCalendar({ logs = [], settings, onDayClick, selecte
                 ${!bg ? "hover:bg-slate-50" : ""}
               `}
             >
-              {/* Heart emoji for fertile days */}
-              {isFertile && (
-                <span className="absolute -top-0.5 -right-0.5 text-[9px] leading-none">💗</span>
-              )}
+              {/* Overlays */}
+              {isFertile  && <span className="absolute -top-0.5 -right-0.5 text-[9px] leading-none">💗</span>}
+              {predMid    && <span className="absolute -top-0.5 -right-0.5 text-[9px] leading-none">🔮</span>}
+              {nextFertile && <span className="absolute -top-0.5 -right-0.5 text-[9px] leading-none">🌱</span>}
 
               {/* Date number */}
               <span className={`leading-none text-[13px] ${today ? "text-violet-600 font-bold" : ""}`}>
@@ -154,6 +179,7 @@ export default function CycleCalendar({ logs = [], settings, onDayClick, selecte
                 {hasLog && !isPeriod && <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
                 {hasSymptom && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
                 {hasMood    && <div className="w-1.5 h-1.5 rounded-full bg-pink-400" />}
+                {predPeriod && !isPeriod && <div className="w-1.5 h-1.5 rounded-full bg-rose-300" />}
               </div>
             </motion.button>
           );
@@ -161,24 +187,30 @@ export default function CycleCalendar({ logs = [], settings, onDayClick, selecte
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center flex-wrap gap-3 mt-4 pt-3 border-t border-slate-50">
-        {LEGEND.map((item) => (
-          <div key={item.label} className="flex items-center gap-1.5">
-            {item.emoji ? (
-              <span className="text-sm leading-none">{item.emoji}</span>
-            ) : (
-              <div className={`w-3 h-3 rounded-full ${item.color}`} />
-            )}
-            <span className="text-[10px] font-medium text-slate-400">{item.label}</span>
-          </div>
-        ))}
+      <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-3 border-t border-slate-50">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full bg-rose-300" />
+          <span className="text-[10px] font-medium text-slate-400">Period</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full bg-rose-200 border border-rose-300 border-dashed" />
+          <span className="text-[10px] font-medium text-slate-400">Predicted 🔮</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm leading-none">💗</span>
+          <span className="text-[10px] font-medium text-slate-400">Fertile</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm leading-none">🌱</span>
+          <span className="text-[10px] font-medium text-slate-400">Next fertile</span>
+        </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-amber-300" />
           <span className="text-[10px] font-medium text-slate-400">Symptoms</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-pink-300" />
-          <span className="text-[10px] font-medium text-slate-400">Mood</span>
+          <div className="w-3 h-3 rounded-full bg-violet-300" />
+          <span className="text-[10px] font-medium text-slate-400">Logged</span>
         </div>
       </div>
     </div>

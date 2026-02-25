@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { name: "Settings", icon: Settings, page: "Settings" },
 ];
 
-const HIDE_NAV_PAGES = ["LogEntry"];
+const HIDE_NAV_PAGES = ["LogEntry", "AIAssistant"];
 
 export default function Layout({ children, currentPageName }) {
   const showNav = !HIDE_NAV_PAGES.includes(currentPageName);
