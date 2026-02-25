@@ -5,6 +5,7 @@ import { Send, Sparkles, Loader2, RotateCcw, ChevronRight } from "lucide-react";
 import { differenceInDays, format } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
+import { useAuth } from "@/lib/AuthContext";
 import {
   buildCycles,
   computeCycleStats,
@@ -68,8 +69,18 @@ Guidelines:
 ${context}`;
 
 export default function AIAssistant() {
+  const { user } = useAuth();
+  const storageKey = `luna_chat_${user?.id}`;
+
   const [input, setInput]       = useState("");
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [activeCat, setActiveCat] = useState(0);
   const chatEndRef   = useRef(null);
@@ -89,6 +100,13 @@ export default function AIAssistant() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    try {
+      // Keep last 100 messages to avoid storage bloat
+      localStorage.setItem(storageKey, JSON.stringify(messages.slice(-100)));
+    } catch {}
+  }, [messages, storageKey]);
 
   const handleInputChange = (e) => {
     setInput(e.target.value);
@@ -278,7 +296,7 @@ export default function AIAssistant() {
         </div>
         {messages.length > 0 && (
           <button
-            onClick={() => setMessages([])}
+            onClick={() => { setMessages([]); localStorage.removeItem(storageKey); }}
             className="p-2 rounded-xl hover:bg-purple-50 transition-colors text-slate-400 hover:text-slate-600"
           >
             <RotateCcw className="w-4 h-4" />

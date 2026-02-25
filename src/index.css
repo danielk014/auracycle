@@ -90,6 +90,18 @@
 }
 
 @layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+
   .flo-card {
     @apply bg-white rounded-2xl shadow-sm border border-purple-50;
   }
