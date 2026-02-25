@@ -4,17 +4,19 @@ import { motion } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, Droplets, Brain, AlertTriangle, CheckCircle, Activity } from "lucide-react";
-import CycleHistoryChart from "@/components/insights/CycleHistoryChart";
-import { getCycleLogs, getCycleSettings } from "@/lib/db";
+import { TrendingUp, Brain, AlertTriangle, CheckCircle, Activity, CalendarDays, Droplets } from "lucide-react";
+import { getCycleLogs, getCycleSettings, getCycleSettingsCache } from "@/lib/db";
 import {
   buildCycles,
   computeCycleStats,
   detectIrregularity,
   computeSymptomPatterns,
+  predictNextPeriod,
 } from "@/lib/cycleStats";
+import { format, parseISO } from "date-fns";
 
 const COLORS = ["#8B5CF6", "#EC4899", "#F59E0B", "#34D399", "#3B82F6", "#EF4444"];
+const FLOW_ORDER = ["spotting", "light", "medium", "heavy"];
 
 export default function Insights() {
   const [activeSymptomTab, setActiveSymptomTab] = useState("frequency");
@@ -27,6 +29,7 @@ export default function Insights() {
   const { data: settings } = useQuery({
     queryKey: ["cycleSettings"],
     queryFn: getCycleSettings,
+    initialData: getCycleSettingsCache,
   });
 
   // ── Cycle computations ─────────────────────────────────────
@@ -34,29 +37,48 @@ export default function Insights() {
   const stats        = computeCycleStats(cycles);
   const irregularity = detectIrregularity(cycles);
   const patterns     = computeSymptomPatterns(logs, cycles);
+  const prediction   = predictNextPeriod(cycles, settings);
 
-  // ── Frequency stats ────────────────────────────────────────
+  // Avg period length from all logged cycles
+  const avgPeriodLength = cycles.length > 0
+    ? Math.round(cycles.reduce((sum, c) => sum + c.periodLength, 0) / cycles.length)
+    : settings?.average_period_length || null;
+
+  const lastCycleLength = stats.last3.length > 0 ? stats.last3[stats.last3.length - 1] : null;
+
+  const stabilityLabel = stats.stdDev === null ? null
+    : stats.stdDev <= 1   ? { text: "Very stable",       cls: "bg-emerald-100 text-emerald-700" }
+    : stats.stdDev <= 2.5 ? { text: "Stable",            cls: "bg-emerald-50 text-emerald-600" }
+    : stats.stdDev <= 4.5 ? { text: "Slightly variable", cls: "bg-amber-50 text-amber-600" }
+    :                        { text: "Variable",          cls: "bg-orange-50 text-orange-600" };
+
+  // ── Symptom frequency (normalize :severity suffixes) ──────
   const symptomFreq = {};
-  logs.forEach((l) => l.symptoms?.forEach((s) => { symptomFreq[s] = (symptomFreq[s] || 0) + 1; }));
+  logs.forEach((l) => l.symptoms?.forEach((s) => {
+    const name = s.split(":")[0].replace(/_/g, " ");
+    symptomFreq[name] = (symptomFreq[name] || 0) + 1;
+  }));
   const symptomData = Object.entries(symptomFreq)
-    .map(([name, count]) => ({ name: name.replace(/_/g, " "), count }))
+    .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
+  // ── Flow distribution (case-normalised, shown as % of total) ──
+  const flowDist = {};
+  logs.filter((l) => l.flow_intensity).forEach((l) => {
+    const key = l.flow_intensity.toLowerCase();
+    flowDist[key] = (flowDist[key] || 0) + 1;
+  });
+  const flowData = FLOW_ORDER
+    .filter((k) => flowDist[k] > 0)
+    .map((k) => ({ name: k, value: flowDist[k] }));
+  const flowTotal = flowData.reduce((s, d) => s + d.value, 0);
 
-  const flowDist = { spotting: 0, light: 0, medium: 0, heavy: 0 };
-  logs.filter((l) => l.flow_intensity).forEach((l) => { flowDist[l.flow_intensity] = (flowDist[l.flow_intensity] || 0) + 1; });
-  const flowData = Object.entries(flowDist).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
+  const totalLogs = logs.length;
 
-  const totalLogs  = logs.length;
-  const periodDays = logs.filter((l) => l.log_type === "period").length;
-
-  // ── Symptom timing scatter data ───────────────────────────
-  // Top 5 patterns for scatter chart
-  const topPatterns = patterns.slice(0, 5);
-  const scatterData = topPatterns.flatMap((p, colorIdx) =>
-    p.allDays.map((day) => ({ day, symptom: p.symptom, colorIdx }))
-  );
+  const predRange = prediction
+    ? `${format(parseISO(prediction.range_start), "MMM d")} – ${format(parseISO(prediction.range_end), "MMM d")}`
+    : null;
 
   return (
     <div className="pb-28 px-4 pt-10 max-w-lg mx-auto">
@@ -65,8 +87,85 @@ export default function Insights() {
         <p className="text-sm text-slate-400 mt-0.5">Your cycle patterns at a glance</p>
       </motion.div>
 
-      {/* ── Cycle history chart ──────────────────────────────── */}
-      <CycleHistoryChart logs={logs} />
+      {/* ── Cycle Overview ───────────────────────────────────── */}
+      {(stats.avg || avgPeriodLength) && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="w-4 h-4 text-violet-500" />
+            <h3 className="text-sm font-bold text-slate-700">Cycle Overview</h3>
+          </div>
+
+          <div className="divide-y divide-slate-50">
+            {stats.avg && (
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm text-slate-500">Avg cycle length</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-800">{stats.avg} days</span>
+                  {stabilityLabel && (
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${stabilityLabel.cls}`}>
+                      {stabilityLabel.text}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {avgPeriodLength && (
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm text-slate-500">Avg period length</span>
+                <span className="text-sm font-bold text-slate-800">{avgPeriodLength} days</span>
+              </div>
+            )}
+            {lastCycleLength && (
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm text-slate-500">Last cycle length</span>
+                <span className="text-sm font-bold text-slate-800">{lastCycleLength} days</span>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── Predictions ──────────────────────────────────────── */}
+      {prediction && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl p-5 border border-rose-100 shadow-sm mb-4"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarDays className="w-4 h-4 text-rose-500" />
+            <h3 className="text-sm font-bold text-slate-700">Next Period Prediction</h3>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-0.5 uppercase tracking-wide font-medium">Most likely</p>
+          <p className="text-xl font-bold text-rose-600 mb-2">{predRange}</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-slate-400">
+              Predicted{" "}
+              <span className="font-medium text-slate-600">
+                {format(parseISO(prediction.predicted_date), "MMMM d")}
+              </span>
+            </span>
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+              prediction.confidence === "high"   ? "bg-emerald-100 text-emerald-700" :
+              prediction.confidence === "medium" ? "bg-amber-100 text-amber-700"    :
+                                                   "bg-orange-100 text-orange-700"
+            }`}>
+              {prediction.confidence.charAt(0).toUpperCase() + prediction.confidence.slice(1)} confidence
+            </span>
+          </div>
+          {prediction.cycles_analyzed > 0 && (
+            <p className="text-[10px] text-slate-400 mt-1.5">
+              Based on {prediction.cycles_analyzed} tracked cycle{prediction.cycles_analyzed !== 1 ? "s" : ""}
+            </p>
+          )}
+        </motion.div>
+      )}
 
       {/* ── Irregularity alert ───────────────────────────────── */}
       {irregularity && (
@@ -74,7 +173,7 @@ export default function Insights() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className={`rounded-2xl p-4 border mb-5 flex items-start gap-3 ${
+          className={`rounded-2xl p-4 border mb-4 flex items-start gap-3 ${
             irregularity.isIrregular
               ? "bg-amber-50 border-amber-200"
               : "bg-emerald-50 border-emerald-200"
@@ -100,108 +199,53 @@ export default function Insights() {
         </motion.div>
       )}
 
-      {/* ── Cycle statistics panel ───────────────────────────── */}
-      {stats.count >= 2 && (
+      {/* ── Flow distribution (fixed) ────────────────────────── */}
+      {flowData.length > 0 && (
         <motion.div
-          initial={{ opacity: 0, y: 15 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12 }}
-          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-5"
+          transition={{ delay: 0.15 }}
+          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
         >
           <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-4 h-4 text-violet-500" />
-            <h3 className="text-sm font-bold text-slate-700">Cycle Statistics</h3>
+            <Droplets className="w-4 h-4 text-rose-400" />
+            <h3 className="text-sm font-bold text-slate-700">Flow Distribution</h3>
           </div>
-
-          <div className="grid grid-cols-4 gap-3 mb-4">
-            {[
-              { label: "Average", value: stats.avg ? `${stats.avg}d` : "—", color: "text-violet-600" },
-              { label: "Variation", value: stats.stdDev !== null ? `±${stats.stdDev}d` : "—", color: "text-amber-600" },
-              { label: "Shortest", value: stats.min ? `${stats.min}d` : "—", color: "text-emerald-600" },
-              { label: "Longest",  value: stats.max ? `${stats.max}d` : "—", color: "text-rose-600" },
-            ].map((item) => (
-              <div key={item.label} className="text-center bg-slate-50 rounded-xl py-2.5">
-                <p className={`text-base font-bold ${item.color}`}>{item.value}</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">{item.label}</p>
-              </div>
-            ))}
+          <div className="space-y-3">
+            {flowData.map((f) => {
+              const pct = (f.value / flowTotal) * 100;
+              return (
+                <div key={f.name} className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500 w-16 capitalize">{f.name}</span>
+                  <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                      className="h-full bg-gradient-to-r from-rose-300 to-rose-500 rounded-full"
+                    />
+                  </div>
+                  <span className="text-xs font-medium text-slate-600 w-8 text-right">{f.value}×</span>
+                </div>
+              );
+            })}
           </div>
-
-          {stats.last3.length >= 2 && (
-            <div>
-              <p className="text-[10px] text-slate-400 mb-2 font-medium uppercase tracking-wider">Last 3 cycle lengths</p>
-              <div className="flex gap-2">
-                {stats.last3.map((len, i) => {
-                  const isLong = len > (stats.avg || 28) + 3;
-                  const isShort = len < (stats.avg || 28) - 3;
-                  return (
-                    <div
-                      key={i}
-                      className={`flex-1 rounded-xl py-2.5 text-center border ${
-                        isLong  ? "bg-amber-50 border-amber-100"   :
-                        isShort ? "bg-blue-50 border-blue-100"     :
-                                  "bg-violet-50 border-violet-100"
-                      }`}
-                    >
-                      <span className={`text-sm font-bold ${
-                        isLong  ? "text-amber-600" :
-                        isShort ? "text-blue-600"  :
-                                  "text-violet-600"
-                      }`}>{len}d</span>
-                      <p className="text-[9px] text-slate-400 mt-0.5">
-                        Cycle {stats.count - stats.last3.length + i + 1}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-              {stats.stdDev !== null && (
-                <p className="text-[10px] text-slate-400 mt-2 text-center">
-                  {stats.stdDev <= 2
-                    ? "Very consistent cycle — great for prediction accuracy."
-                    : stats.stdDev <= 4
-                    ? "Slightly variable — predictions have a ±2–3 day window."
-                    : "Higher variability — consider tracking more cycles for accuracy."}
-                </p>
-              )}
-            </div>
-          )}
         </motion.div>
       )}
 
-      {/* ── Summary cards ────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          { icon: TrendingUp, label: "Total Logs",  value: totalLogs,                       bg: "bg-violet-50", color: "text-violet-500" },
-          { icon: Droplets,   label: "Period Days", value: periodDays,                       bg: "bg-rose-50",   color: "text-rose-500" },
-          { icon: Brain,      label: "Symptoms",    value: Object.keys(symptomFreq).length,  bg: "bg-amber-50",  color: "text-amber-500" },
-        ].map((card, i) => (
-          <motion.div
-            key={card.label}
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="bg-white rounded-2xl p-4 border border-purple-50 shadow-sm text-center"
-          >
-            <div className={`${card.bg} w-9 h-9 rounded-xl flex items-center justify-center mx-auto mb-2`}>
-              <card.icon className={`w-4 h-4 ${card.color}`} />
-            </div>
-            <p className="text-xl font-bold text-slate-800">{card.value}</p>
-            <p className="text-xs text-slate-400">{card.label}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* ── Symptom section with tabs ────────────────────────── */}
+      {/* ── Symptoms section ─────────────────────────────────── */}
       {(symptomData.length > 0 || patterns.length > 0) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-5"
+          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
         >
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-slate-700">Symptoms</h3>
+            <div className="flex items-center gap-2">
+              <Brain className="w-4 h-4 text-violet-400" />
+              <h3 className="text-sm font-bold text-slate-700">Symptoms</h3>
+            </div>
             {patterns.length > 0 && (
               <div className="flex bg-slate-100 rounded-xl p-0.5">
                 {[
@@ -225,12 +269,15 @@ export default function Insights() {
           </div>
 
           {activeSymptomTab === "frequency" && symptomData.length > 0 && (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={symptomData} layout="vertical">
+            <ResponsiveContainer width="100%" height={Math.min(220, symptomData.length * 30 + 20)}>
+              <BarChart data={symptomData} layout="vertical" margin={{ left: 0, right: 8, top: 0, bottom: 0 }}>
                 <XAxis type="number" hide />
-                <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 12, fill: "#64748B" }} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #EDE9FE", fontSize: 12 }} />
-                <Bar dataKey="count" fill="#8B5CF6" radius={[0, 8, 8, 0]} barSize={16} />
+                <YAxis type="category" dataKey="name" width={88} tick={{ fontSize: 11, fill: "#64748B" }} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: "1px solid #EDE9FE", fontSize: 12 }}
+                  formatter={(val) => [`${val} time${val !== 1 ? "s" : ""}`, "Logged"]}
+                />
+                <Bar dataKey="count" fill="#8B5CF6" radius={[0, 8, 8, 0]} barSize={14} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -244,9 +291,7 @@ export default function Insights() {
                 <div key={p.rawSymptom} className="flex items-center gap-3">
                   <span className="text-xs text-slate-500 capitalize w-24 flex-shrink-0 truncate">{p.symptom}</span>
                   <div className="flex-1 bg-slate-50 rounded-full h-5 relative overflow-hidden">
-                    {/* Background cycle bar */}
                     <div className="absolute inset-0 bg-slate-100 rounded-full" />
-                    {/* Symptom range marker */}
                     {(() => {
                       const cycleLen = stats.avg || 28;
                       const minPct = ((Math.min(...p.allDays) - 1) / cycleLen) * 100;
@@ -299,7 +344,7 @@ export default function Insights() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-5"
+          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
         >
           <h3 className="text-sm font-bold text-slate-700 mb-3">Your Patterns</h3>
           <div className="space-y-2.5">
@@ -317,38 +362,6 @@ export default function Insights() {
                 </p>
               </div>
             ))}
-          </div>
-        </motion.div>
-      )}
-
-      {/* ── Flow distribution ────────────────────────────────── */}
-      {flowData.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm"
-        >
-          <h3 className="text-sm font-bold text-slate-700 mb-4">Flow Distribution</h3>
-          <div className="space-y-3">
-            {flowData.map((f) => {
-              const maxVal = Math.max(...flowData.map((d) => d.value));
-              const pct = (f.value / maxVal) * 100;
-              return (
-                <div key={f.name} className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500 w-16 capitalize">{f.name}</span>
-                  <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className="h-full bg-gradient-to-r from-rose-300 to-rose-500 rounded-full"
-                    />
-                  </div>
-                  <span className="text-xs font-medium text-slate-600 w-6 text-right">{f.value}</span>
-                </div>
-              );
-            })}
           </div>
         </motion.div>
       )}

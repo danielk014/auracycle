@@ -238,7 +238,8 @@ export function computeSymptomPatterns(logs, cycles) {
     const cycleDay = differenceInDays(logDate, matchedCycle.startObj) + 1;
     if (cycleDay < 1 || cycleDay > 40) return;
 
-    log.symptoms.forEach((symptom) => {
+    log.symptoms.forEach((raw) => {
+      const symptom = raw.split(":")[0]; // strip :severity suffix (e.g. "cramps:2" → "cramps")
       if (!symptomDays[symptom]) symptomDays[symptom] = [];
       symptomDays[symptom].push(cycleDay);
     });

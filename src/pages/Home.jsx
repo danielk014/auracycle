@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { differenceInDays, addDays, format } from "date-fns";
+import { differenceInDays, addDays, format, parseISO } from "date-fns";
 import CycleWheel from "@/components/dashboard/CycleWheel";
 import QuickStats from "@/components/dashboard/QuickStats";
 import DailyTip from "@/components/dashboard/DailyTip";
@@ -9,9 +9,9 @@ import AIPrediction from "@/components/dashboard/AIPrediction";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Plus, MessageCircle, CheckCircle, X } from "lucide-react";
-import { getCycleLogs, getCycleSettings, getCycleSettingsCache, upsertCycleSettings } from "@/lib/db";
+import { getCycleLogs, getCycleSettings, getCycleSettingsCache, upsertCycleSettings, createCycleLog } from "@/lib/db";
 import { useAuth } from "@/lib/AuthContext";
-import { buildCycles, computeCycleStats } from "@/lib/cycleStats";
+import { buildCycles, computeCycleStats, predictNextPeriod } from "@/lib/cycleStats";
 import { toast } from "sonner";
 
 function getPhase(cycleDay, cycleLength, periodLength) {
@@ -43,7 +43,7 @@ export default function Home() {
   });
 
   // Use computed averages from actual logs when available, fall back to settings
-  const allLogs = recentLogs; // recentLogs is last 30; for cycle calc that's enough
+  const allLogs = recentLogs;
   const computedCycles = buildCycles(allLogs);
   const computedStats  = computeCycleStats(computedCycles);
   const cycleLength  = computedStats.avg || settings?.average_cycle_length  || 28;
@@ -54,14 +54,20 @@ export default function Home() {
     ? Math.round(computedCycles.reduce((sum, c) => sum + c.periodLength, 0) / computedCycles.length)
     : null;
   const periodLength = avgPeriodFromLogs ?? settings?.average_period_length ?? 5;
-  const lastPeriodStart = settings?.last_period_start;
+
+  // Only use last_period_start if it's today or in the past — ignore future-logged periods
+  const rawLastPeriodStart = settings?.last_period_start;
+  const lastPeriodStart = rawLastPeriodStart &&
+    differenceInDays(new Date(), parseISO(rawLastPeriodStart)) >= 0
+      ? rawLastPeriodStart
+      : null;
 
   let cycleDay = 1;
   let nextPeriodIn = Math.round(cycleLength);
   let nextPeriodDate = "";
 
   if (lastPeriodStart) {
-    const daysSince = differenceInDays(new Date(), new Date(lastPeriodStart));
+    const daysSince = differenceInDays(new Date(), parseISO(lastPeriodStart));
     cycleDay = (daysSince % cycleLength) + 1;
     nextPeriodIn = cycleLength - (daysSince % cycleLength);
     nextPeriodDate = format(addDays(new Date(), nextPeriodIn), "MMM d");
@@ -70,9 +76,36 @@ export default function Home() {
   const phase = getPhase(cycleDay, cycleLength, periodLength);
   const [aiPrediction, setAiPrediction] = useState(null);
 
-  // Determine if user is currently in period and hasn't marked it ended
+  // ── Period-ended banner ────────────────────────────────────
   const isPeriodActive = phase === "period" && !settings?.last_period_end;
   const isEndedToday = settings?.last_period_end === format(new Date(), "yyyy-MM-dd");
+
+  // ── Prediction arrival banner ──────────────────────────────
+  const prediction = predictNextPeriod(computedCycles, settings);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const isPredictionWindow = prediction &&
+    todayStr >= prediction.range_start &&
+    todayStr <= prediction.range_end &&
+    // Don't show if user already logged a period on/after the predicted start
+    !(settings?.last_period_start && settings.last_period_start >= prediction.range_start);
+  const predDismissKey = `pred_period_dismissed_${todayStr}`;
+  const [showPredBanner, setShowPredBanner] = useState(() => {
+    try { return !localStorage.getItem(predDismissKey); } catch { return true; }
+  });
+
+  const confirmPeriodStarted = useMutation({
+    mutationFn: () => Promise.all([
+      createCycleLog({ log_type: "period", date: todayStr, flow_intensity: "medium" }),
+      upsertCycleSettings({ last_period_start: todayStr, last_period_end: null }),
+    ]),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cycleSettings"] });
+      queryClient.invalidateQueries({ queryKey: ["cycleLogs"] });
+      queryClient.invalidateQueries({ queryKey: ["recentLogs"] });
+      toast.success("Period logged! 🌸");
+      setShowPredBanner(false);
+    },
+  });
 
   const markPeriodEnded = useMutation({
     mutationFn: () =>
@@ -97,6 +130,36 @@ export default function Home() {
         </p>
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">AuraCycle</h1>
       </motion.div>
+
+      {/* "Predicted period" confirmation banner */}
+      <AnimatePresence>
+        {isPredictionWindow && showPredBanner && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            className="bg-violet-50 border border-violet-200 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
+          >
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-violet-700">Did your period start today?</p>
+              <p className="text-xs text-violet-400 mt-0.5">Your predicted window is here</p>
+            </div>
+            <button
+              onClick={() => confirmPeriodStarted.mutate()}
+              disabled={confirmPeriodStarted.isPending}
+              className="flex items-center gap-1.5 bg-violet-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-violet-600 transition-colors"
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => { try { localStorage.setItem(predDismissKey, "1"); } catch {} setShowPredBanner(false); }}
+              className="text-xs font-semibold text-violet-300 hover:text-violet-500 px-1"
+            >
+              Not yet
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* "Mark period ended" banner */}
       <AnimatePresence>
