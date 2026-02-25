@@ -131,7 +131,9 @@ export default function Calendar() {
           <p className="text-[10px] text-slate-400">this month</p>
         </div>
         <Link
-          to={createPageUrl("LogEntry")}
+          to={selectedDay
+            ? `${createPageUrl("LogEntry")}?date=${format(selectedDay, "yyyy-MM-dd")}`
+            : createPageUrl("LogEntry")}
           className="flex-shrink-0 w-16 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex flex-col items-center justify-center gap-1 shadow-md shadow-violet-200 hover:scale-105 transition-transform"
         >
           <Plus className="w-5 h-5 text-white" />
