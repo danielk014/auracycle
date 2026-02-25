@@ -21,22 +21,48 @@ export default function Login() {
 
     try {
       if (mode === "magic") {
-        const { error } = await supabase.auth.signInWithOtp({ email });
-        if (error) throw error;
-        setMagicSent(true);
-      } else if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signInWithOtp({
           email,
-          password,
-          options: { data: { display_name: name } },
+          options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
+        setMagicSent(true);
+
+      } else if (mode === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { display_name: name },
+            emailRedirectTo: window.location.origin,
+          },
+        });
+        if (error) throw error;
+
+        // If email confirmation is required, Supabase returns a user with no session
+        if (data?.user && !data?.session) {
+          setMagicSent(true); // reuse the "check inbox" screen
+        }
+        // If confirmations are disabled, the session is set automatically via onAuthStateChange
+
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      // Make network errors more understandable
+      const msg = err?.message || "";
+      if (msg === "Failed to fetch" || msg.includes("fetch")) {
+        setError("Cannot reach the server. Check your internet connection and try again.");
+      } else if (msg.toLowerCase().includes("email not confirmed")) {
+        setError("Please check your email and click the confirmation link first.");
+      } else if (msg.toLowerCase().includes("invalid login credentials")) {
+        setError("Wrong email or password. Please try again.");
+      } else if (msg.toLowerCase().includes("user already registered")) {
+        setError("An account with this email already exists. Try signing in instead.");
+      } else {
+        setError(msg || "Something went wrong. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -50,8 +76,11 @@ export default function Login() {
             <CheckCircle className="w-10 h-10 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">Check your inbox!</h2>
-          <p className="text-slate-500 mb-6 max-w-xs">
-            We sent a magic link to <strong className="text-violet-600">{email}</strong>. Click it to sign in.
+          <p className="text-slate-500 mb-6 max-w-xs leading-relaxed">
+            We sent an email to <strong className="text-violet-600">{email}</strong>.
+            {mode === "signup"
+              ? " Click the confirmation link to activate your account, then come back to sign in."
+              : " Click the magic link to sign in instantly."}
           </p>
           <button onClick={() => setMagicSent(false)} className="text-sm text-violet-500 hover:text-violet-700 font-medium">
             ← Try a different email
