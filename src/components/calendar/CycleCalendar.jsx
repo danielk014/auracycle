@@ -24,8 +24,11 @@ function getDayPhase(day, settings) {
   // For days before the last period, extrapolate the previous cycle's phases
   if (daysSince < 0) {
     daysSince = ((daysSince % cycleLength) + cycleLength) % cycleLength;
+  } else if (daysSince >= cycleLength) {
+    // Beyond the current cycle — let the prediction system (predPeriod/predMid) handle these
+    return null;
   }
-  const cycleDay = (daysSince % cycleLength) + 1;
+  const cycleDay = daysSince + 1;
   if (cycleDay <= periodLength)                                       return "period";
   if (cycleDay >= cycleLength - 16 && cycleDay <= cycleLength - 11)  return "fertile";
   if (cycleDay > cycleLength - 11)                                    return "luteal";
@@ -172,13 +175,14 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
               `}
             >
               {/* Top phase dot — colored circle matching legend color */}
-              {(phase === "period" || isFertile || nextFertile || predPeriod || predMid || phase === "luteal") && (
+              {(phase || predPeriod || predMid) && (
                 <div className={`w-1.5 h-1.5 rounded-full mb-0.5 flex-shrink-0 ${
-                  phase === "period"              ? "bg-rose-500"   :
-                  (isFertile || nextFertile)      ? "bg-teal-400"   :
-                  predMid                         ? "bg-rose-500"   :
-                  predPeriod                      ? "bg-rose-300"   :
-                                                    "bg-yellow-400"  // luteal
+                  phase === "period"              ? "bg-rose-500"    :
+                  (isFertile || nextFertile)      ? "bg-teal-400"    :
+                  predMid                         ? "bg-rose-500"    :
+                  predPeriod                      ? "bg-rose-300"    :
+                  phase === "luteal"              ? "bg-yellow-400"  :
+                                                    "bg-emerald-400"  // follicular
                 }`} />
               )}
 
@@ -201,11 +205,12 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
       {/* Legend — colored dots only, no emojis */}
       <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-3 border-t border-slate-50">
         {[
-          { dot: "bg-rose-400",   label: "Period" },
-          { dot: "bg-teal-300",   label: "Fertile" },
-          { dot: "bg-rose-300",   label: "Predicted", dashed: true },
-          { dot: "bg-yellow-300", label: "Luteal" },
-          { dot: "bg-amber-300",  label: "Symptoms" },
+          { dot: "bg-rose-400",    label: "Period" },
+          { dot: "bg-emerald-300", label: "Follicular" },
+          { dot: "bg-teal-300",    label: "Fertile" },
+          { dot: "bg-rose-300",    label: "Predicted", dashed: true },
+          { dot: "bg-yellow-300",  label: "Luteal" },
+          { dot: "bg-amber-300",   label: "Symptoms" },
         ].map((item) => (
           <div key={item.label} className="flex items-center gap-1">
             <div className={`w-2.5 h-2.5 rounded-full ${item.dot} ${item.dashed ? "ring-1 ring-rose-400 ring-offset-[1.5px]" : ""}`} />
