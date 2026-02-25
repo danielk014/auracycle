@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from "react";
+import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
 
 const AuthContext = createContext(null);
@@ -8,19 +8,73 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Hard safety net: if auth resolution takes longer than 6 seconds for any
-    // reason (hung token-refresh request, Supabase cold start, etc.), unblock
-    // the UI so the user is never stuck on the spinner forever.
-    const safetyTimer = setTimeout(() => setLoading(false), 6000);
+  // Prevents double-processing the initial session when both getSession() and
+  // INITIAL_SESSION fire around the same time.
+  const initialised = useRef(false);
 
-    // Supabase v2: onAuthStateChange fires INITIAL_SESSION on subscribe,
-    // which internally calls getSession() and handles token refresh.
-    // Using this as the single source of truth avoids a race condition with
-    // a separate getSession() call that can double-trigger loadProfile().
+  // loadProfile has its own 3-second Promise.race timeout so a slow/hung DB
+  // query can never keep loading=true indefinitely.
+  const loadProfile = async (userId) => {
+    try {
+      const { data } = await Promise.race([
+        supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("profile_timeout")), 3000)
+        ),
+      ]);
+      setProfile(data ?? null);
+    } catch {
+      setProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Layer 3: Absolute hard cap — loading can never stay true beyond 4 seconds.
+    const safetyTimer = setTimeout(() => setLoading(false), 4000);
+
+    // Layer 1: getSession() — reads localStorage first, fast.
+    // Only does a network call if the token needs refreshing.
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (initialised.current) return;
+        initialised.current = true;
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+          loadProfile(currentUser.id);
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!initialised.current) {
+          initialised.current = true;
+          setLoading(false);
+        }
+      });
+
+    // Layer 2: onAuthStateChange — covers INITIAL_SESSION, SIGNED_IN, SIGNED_OUT,
+    // TOKEN_REFRESHED, and all subsequent auth events.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         const currentUser = session?.user ?? null;
+
+        if (event === "INITIAL_SESSION") {
+          // Deduplicate with getSession() — whichever fires first wins.
+          if (initialised.current) return;
+          initialised.current = true;
+          setUser(currentUser);
+          if (currentUser) {
+            await loadProfile(currentUser.id);
+          } else {
+            setLoading(false);
+          }
+          return;
+        }
+
+        // All other events (login, logout, token refresh) — update state directly.
         setUser(currentUser);
         if (currentUser) {
           await loadProfile(currentUser.id);
@@ -36,21 +90,6 @@ export const AuthProvider = ({ children }) => {
       subscription.unsubscribe();
     };
   }, []);
-
-  const loadProfile = async (userId) => {
-    try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-      setProfile(data ?? null);
-    } catch {
-      setProfile(null);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const refreshProfile = async () => {
     if (user) await loadProfile(user.id);
