@@ -118,10 +118,10 @@ export function predictNextPeriod(cycles, settings) {
   const rangeStart = addDays(predictedDate, -rangeDays);
   const rangeEnd = addDays(predictedDate, rangeDays);
 
-  // Confidence level
+  // Confidence level — needs at least 1 complete cycle; more data = higher confidence
   let confidence = "high";
-  if (completed.length < 2 || stdDev > 5) confidence = "low";
-  else if (stdDev > 2.5) confidence = "medium";
+  if (completed.length === 0 || stdDev > 5) confidence = "low";
+  else if (completed.length < 3 || stdDev > 2.5) confidence = "medium";
 
   return {
     predicted_date: format(predictedDate, "yyyy-MM-dd"),

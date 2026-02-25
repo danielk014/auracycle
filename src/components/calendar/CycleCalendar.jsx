@@ -20,7 +20,7 @@ function getDayPhase(day, settings) {
   if (!settings?.last_period_start) return null;
   const cycleLength  = settings.average_cycle_length  || 28;
   const periodLength = settings.average_period_length || 5;
-  const daysSince    = differenceInDays(day, new Date(settings.last_period_start));
+  const daysSince    = differenceInDays(day, parseISO(settings.last_period_start));
   if (daysSince < 0) return null;
   const cycleDay = (daysSince % cycleLength) + 1;
   if (cycleDay <= periodLength)                                       return "period";
@@ -72,7 +72,8 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
   const days         = eachDayOfInterval({ start: monthStart, end: monthEnd });
   const startPadding = getDay(monthStart);
 
-  const getLogsForDay = (day) => logs.filter((l) => isSameDay(new Date(l.date), day));
+  // Use parseISO so "2026-02-25" is always treated as local midnight, not UTC midnight
+  const getLogsForDay = (day) => logs.filter((l) => isSameDay(parseISO(l.date), day));
 
   return (
     <div className="bg-white rounded-3xl p-4 shadow-sm border border-purple-50">
@@ -184,10 +185,9 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
 
               {/* Bottom indicator dots for logged data */}
               <div className="flex gap-0.5 mt-0.5 h-1.5 items-center">
-                {isPeriod    && <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
-                {hasLog && !isPeriod && <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
-                {hasSymptom  && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
-                {hasMood     && <div className="w-1.5 h-1.5 rounded-full bg-pink-400" />}
+                {isPeriod   && <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
+                {hasSymptom && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                {hasMood    && <div className="w-1.5 h-1.5 rounded-full bg-pink-400" />}
               </div>
             </motion.button>
           );
@@ -202,7 +202,6 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
           { dot: "bg-rose-300",   label: "Predicted", dashed: true },
           { dot: "bg-teal-300",   label: "Next fertile" },
           { dot: "bg-yellow-300", label: "Luteal" },
-          { dot: "bg-violet-300", label: "Logged" },
           { dot: "bg-amber-300",  label: "Symptoms" },
         ].map((item) => (
           <div key={item.label} className="flex items-center gap-1">

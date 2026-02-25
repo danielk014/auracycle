@@ -3,9 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, ScatterChart, Scatter, CartesianGrid, ReferenceLine,
 } from "recharts";
-import { TrendingUp, Droplets, Brain, Heart, AlertTriangle, CheckCircle, Activity } from "lucide-react";
+import { TrendingUp, Droplets, Brain, AlertTriangle, CheckCircle, Activity } from "lucide-react";
 import CycleHistoryChart from "@/components/insights/CycleHistoryChart";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
 import {
@@ -16,12 +15,6 @@ import {
 } from "@/lib/cycleStats";
 
 const COLORS = ["#8B5CF6", "#EC4899", "#F59E0B", "#34D399", "#3B82F6", "#EF4444"];
-
-// Custom dot for scatter chart
-const SymptomDot = (props) => {
-  const { cx, cy, fill } = props;
-  return <circle cx={cx} cy={cy} r={5} fill={fill} fillOpacity={0.7} stroke="white" strokeWidth={1.5} />;
-};
 
 export default function Insights() {
   const [activeSymptomTab, setActiveSymptomTab] = useState("frequency");
@@ -50,12 +43,6 @@ export default function Insights() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
-  const moodFreq = {};
-  logs.forEach((l) => l.moods?.forEach((m) => { moodFreq[m] = (moodFreq[m] || 0) + 1; }));
-  const moodData = Object.entries(moodFreq)
-    .map(([name, value]) => ({ name: name.replace(/_/g, " "), value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
 
   const flowDist = { spotting: 0, light: 0, medium: 0, heavy: 0 };
   logs.filter((l) => l.flow_intensity).forEach((l) => { flowDist[l.flow_intensity] = (flowDist[l.flow_intensity] || 0) + 1; });
@@ -328,34 +315,6 @@ export default function Insights() {
                     <span className="text-slate-400"> ({p.count} occurrences)</span>
                   )}
                 </p>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      )}
-
-      {/* ── Mood distribution ────────────────────────────────── */}
-      {moodData.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-5"
-        >
-          <h3 className="text-sm font-bold text-slate-700 mb-4">Mood Distribution</h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={moodData} cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={3} dataKey="value">
-                {moodData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #EDE9FE", fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-2 mt-2 justify-center">
-            {moodData.map((m, i) => (
-              <div key={m.name} className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                <span className="text-xs text-slate-500 capitalize">{m.name}</span>
               </div>
             ))}
           </div>

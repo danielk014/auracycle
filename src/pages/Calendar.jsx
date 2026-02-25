@@ -1,13 +1,14 @@
-import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import CycleCalendar from "@/components/calendar/CycleCalendar";
-import { format, isSameDay, differenceInDays } from "date-fns";
-import { Droplets, Brain, Heart, Pencil, Plus, Moon, Dumbbell, Droplet, Activity } from "lucide-react";
+import { format, isSameDay, differenceInDays, parseISO } from "date-fns";
+import { Droplets, Brain, Heart, Pencil, Plus, Moon, Dumbbell, Droplet, Activity, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { getCycleLogs, getCycleSettings } from "@/lib/db";
+import { getCycleLogs, getCycleSettings, deleteCycleLog } from "@/lib/db";
 import { buildCycles, computeCycleStats, predictNextPeriod, getFertileWindow } from "@/lib/cycleStats";
+import { toast } from "sonner";
 
 const LOG_TYPES = [
   { key: "all", label: "All" },
@@ -45,8 +46,10 @@ function getDayPhase(day, settings) {
 }
 
 export default function Calendar() {
-  const [selectedDay,  setSelectedDay]  = React.useState(null);
-  const [activeFilter, setActiveFilter] = React.useState("all");
+  const [selectedDay,   setSelectedDay]   = useState(null);
+  const [activeFilter,  setActiveFilter]  = useState("all");
+  const [confirmDelete, setConfirmDelete] = useState(null); // log id to confirm
+  const queryClient = useQueryClient();
 
   const { data: logs = [] } = useQuery({
     queryKey: ["cycleLogs"],
@@ -69,8 +72,20 @@ export default function Calendar() {
     ? getFertileWindow(settings.last_period_start, avgLen)
     : null;
 
+  const deleteLog = useMutation({
+    mutationFn: (id) => deleteCycleLog(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cycleLogs"] });
+      queryClient.invalidateQueries({ queryKey: ["recentLogs"] });
+      setConfirmDelete(null);
+      toast.success("Log deleted");
+    },
+    onError: () => toast.error("Failed to delete log"),
+  });
+
+  // Use parseISO to avoid timezone-off-by-one issues with YYYY-MM-DD strings
   const selectedLogs = selectedDay
-    ? logs.filter((l) => isSameDay(new Date(l.date), selectedDay))
+    ? logs.filter((l) => isSameDay(parseISO(l.date), selectedDay))
     : [];
 
   const filteredLogs = selectedLogs.filter((l) => {
@@ -85,7 +100,7 @@ export default function Calendar() {
 
   const now = new Date();
   const thisMonthLogs = logs.filter((l) => {
-    const d = new Date(l.date);
+    const d = parseISO(l.date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
   const periodDays = thisMonthLogs.filter((l) => l.log_type === "period").length;
@@ -209,6 +224,7 @@ export default function Calendar() {
               <div className="space-y-3">
                 {filteredLogs.map((log) => {
                   const t = TYPE_META[log.log_type] || TYPE_META.note;
+                  const isConfirming = confirmDelete === log.id;
                   return (
                     <motion.div
                       key={log.id}
@@ -222,15 +238,43 @@ export default function Calendar() {
                         </div>
                         <span className="text-sm font-bold text-slate-700">{t.label}</span>
                         {log.flow_intensity && (
-                          <span className="ml-auto text-xs bg-rose-50 text-rose-600 px-2.5 py-1 rounded-full font-semibold border border-rose-100">
-                            {log.flow_intensity} flow
+                          <span className="text-xs bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-semibold border border-rose-100">
+                            {log.flow_intensity}
                           </span>
                         )}
                         {log.is_period_end && (
-                          <span className="ml-auto text-xs bg-pink-50 text-pink-600 px-2.5 py-1 rounded-full font-semibold border border-pink-100">
-                            Period ended
+                          <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full font-semibold border border-pink-100">
+                            ended
                           </span>
                         )}
+                        {/* Delete button */}
+                        <div className="ml-auto flex items-center gap-1.5">
+                          {isConfirming ? (
+                            <>
+                              <button
+                                onClick={() => deleteLog.mutate(log.id)}
+                                disabled={deleteLog.isPending}
+                                className="text-[11px] font-semibold text-white bg-rose-500 px-2.5 py-1 rounded-lg hover:bg-rose-600 transition-colors"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="text-[11px] text-slate-400 hover:text-slate-600 p-1"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDelete(log.id)}
+                              className="p-1.5 rounded-xl text-slate-300 hover:text-rose-400 hover:bg-rose-50 transition-colors"
+                              title="Delete log"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {log.symptoms?.length > 0 && (
                         <div className="mb-2">

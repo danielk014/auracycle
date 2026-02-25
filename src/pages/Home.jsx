@@ -11,6 +11,7 @@ import { createPageUrl } from "@/utils";
 import { Plus, MessageCircle, CheckCircle, X } from "lucide-react";
 import { getCycleLogs, getCycleSettings, upsertCycleSettings } from "@/lib/db";
 import { useAuth } from "@/lib/AuthContext";
+import { buildCycles, computeCycleStats } from "@/lib/cycleStats";
 import { toast } from "sonner";
 
 function getPhase(cycleDay, cycleLength, periodLength) {
@@ -35,12 +36,16 @@ export default function Home() {
     queryFn: () => getCycleLogs(30),
   });
 
-  const cycleLength  = settings?.average_cycle_length  || 28;
+  // Use computed average from actual logs when available, fall back to settings
+  const allLogs = recentLogs; // recentLogs is last 30; for cycle calc that's enough
+  const computedCycles = buildCycles(allLogs);
+  const computedStats  = computeCycleStats(computedCycles);
+  const cycleLength  = computedStats.avg || settings?.average_cycle_length  || 28;
   const periodLength = settings?.average_period_length || 5;
   const lastPeriodStart = settings?.last_period_start;
 
   let cycleDay = 1;
-  let nextPeriodIn = cycleLength;
+  let nextPeriodIn = Math.round(cycleLength);
   let nextPeriodDate = "";
 
   if (lastPeriodStart) {

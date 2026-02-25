@@ -27,6 +27,25 @@ export async function createCycleLog(logData) {
   return data;
 }
 
+export async function deleteCycleLog(id) {
+  const { error } = await supabase
+    .from("cycle_logs")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function updateCycleLog(id, logData) {
+  const { data, error } = await supabase
+    .from("cycle_logs")
+    .update(logData)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ─── CYCLE SETTINGS ───────────────────────────────────────────
 
 export async function getCycleSettings() {
