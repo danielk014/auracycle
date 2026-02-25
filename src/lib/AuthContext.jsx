@@ -9,22 +9,15 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        if (currentUser) {
-          loadProfile(currentUser.id);
-        } else {
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        setLoading(false);
-      });
+    // Hard safety net: if auth resolution takes longer than 6 seconds for any
+    // reason (hung token-refresh request, Supabase cold start, etc.), unblock
+    // the UI so the user is never stuck on the spinner forever.
+    const safetyTimer = setTimeout(() => setLoading(false), 6000);
 
-    // Subscribe to auth changes (login, logout, token refresh)
+    // Supabase v2: onAuthStateChange fires INITIAL_SESSION on subscribe,
+    // which internally calls getSession() and handles token refresh.
+    // Using this as the single source of truth avoids a race condition with
+    // a separate getSession() call that can double-trigger loadProfile().
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         const currentUser = session?.user ?? null;
@@ -38,7 +31,10 @@ export const AuthProvider = ({ children }) => {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadProfile = async (userId) => {
