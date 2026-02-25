@@ -20,8 +20,11 @@ function getDayPhase(day, settings) {
   if (!settings?.last_period_start) return null;
   const cycleLength  = settings.average_cycle_length  || 28;
   const periodLength = settings.average_period_length || 5;
-  const daysSince    = differenceInDays(day, parseISO(settings.last_period_start));
-  if (daysSince < 0) return null;
+  let daysSince = differenceInDays(day, parseISO(settings.last_period_start));
+  // For days before the last period, extrapolate the previous cycle's phases
+  if (daysSince < 0) {
+    daysSince = ((daysSince % cycleLength) + cycleLength) % cycleLength;
+  }
   const cycleDay = (daysSince % cycleLength) + 1;
   if (cycleDay <= periodLength)                                       return "period";
   if (cycleDay >= cycleLength - 16 && cycleDay <= cycleLength - 11)  return "fertile";
@@ -146,8 +149,8 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
             bg   = "bg-teal-50";
             text = "text-teal-700";
           } else if (isFertile) {
-            bg   = "bg-pink-50";
-            text = "text-pink-700";
+            bg   = "bg-teal-50";
+            text = "text-teal-700";
           } else if (phase === "luteal") {
             bg   = "bg-yellow-50";
             text = "text-yellow-700";
@@ -168,13 +171,14 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
                 ${!bg ? "hover:bg-slate-50" : ""}
               `}
             >
-              {/* Top phase dot — colored circle, NO emoji */}
-              {(isFertile || nextFertile || predPeriod || predMid) && (
+              {/* Top phase dot — colored circle matching legend color */}
+              {(phase === "period" || isFertile || nextFertile || predPeriod || predMid || phase === "luteal") && (
                 <div className={`w-1.5 h-1.5 rounded-full mb-0.5 flex-shrink-0 ${
-                  isFertile   ? "bg-pink-400"    :
-                  nextFertile ? "bg-teal-400"    :
-                  predMid     ? "bg-rose-500"    :
-                                "bg-rose-300"
+                  phase === "period"              ? "bg-rose-500"   :
+                  (isFertile || nextFertile)      ? "bg-teal-400"   :
+                  predMid                         ? "bg-rose-500"   :
+                  predPeriod                      ? "bg-rose-300"   :
+                                                    "bg-yellow-400"  // luteal
                 }`} />
               )}
 
@@ -198,9 +202,8 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
       <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-3 border-t border-slate-50">
         {[
           { dot: "bg-rose-400",   label: "Period" },
-          { dot: "bg-pink-300",   label: "Fertile" },
+          { dot: "bg-teal-300",   label: "Fertile" },
           { dot: "bg-rose-300",   label: "Predicted", dashed: true },
-          { dot: "bg-teal-300",   label: "Next fertile" },
           { dot: "bg-yellow-300", label: "Luteal" },
           { dot: "bg-amber-300",  label: "Symptoms" },
         ].map((item) => (

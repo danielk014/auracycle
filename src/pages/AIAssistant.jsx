@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Send, Sparkles, Loader2, RotateCcw, ChevronRight } from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { Send, Sparkles, Loader2, RotateCcw, ChevronRight } from "lucide-react";
 import { differenceInDays, format } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
@@ -263,12 +261,9 @@ export default function AIAssistant() {
   const activeCategory = SUGGESTION_CATEGORIES[activeCat];
 
   return (
-    <div className="flex flex-col h-screen max-w-lg mx-auto" style={{ background: "linear-gradient(160deg, #faf5ff 0%, #fff0f8 100%)" }}>
+    <div className="flex flex-col h-screen pb-16 max-w-lg mx-auto" style={{ background: "linear-gradient(160deg, #faf5ff 0%, #fff0f8 100%)" }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-10 pb-3 bg-white/70 backdrop-blur-xl border-b border-purple-50 shadow-sm">
-        <Link to={createPageUrl("Home")} className="p-2 -ml-2 rounded-xl hover:bg-purple-50 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-slate-500" />
-        </Link>
         <div className="flex items-center gap-2.5 flex-1">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center shadow-md shadow-violet-200">
             <Sparkles className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />

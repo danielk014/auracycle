@@ -2,7 +2,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Droplets, Calendar, Moon, Heart } from "lucide-react";
 
-export default function QuickStats({ nextPeriodIn, cycleLength, periodLength, lastPeriod }) {
+export default function QuickStats({ nextPeriodIn, cycleLength, periodLength, lastPeriod, cyclesCount = 0 }) {
   const stats = [
     {
       icon: Droplets,
@@ -13,14 +13,14 @@ export default function QuickStats({ nextPeriodIn, cycleLength, periodLength, la
     },
     {
       icon: Calendar,
-      label: "Cycle Length",
-      value: `${cycleLength} days`,
+      label: cyclesCount >= 2 ? "Est. Cycle Length" : "Cycle Length",
+      value: `${Math.round(cycleLength)} days`,
       color: "text-violet-500",
       bg: "bg-violet-50",
     },
     {
       icon: Moon,
-      label: "Period Length",
+      label: cyclesCount >= 1 ? "Avg Period Length" : "Period Length",
       value: `${periodLength} days`,
       color: "text-indigo-500",
       bg: "bg-indigo-50",

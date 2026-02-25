@@ -66,10 +66,10 @@ export default function Calendar() {
   const cycleStats = computeCycleStats(cycles);
   const prediction = predictNextPeriod(cycles, settings);
   const avgLen     = cycleStats.avg || settings?.average_cycle_length || 28;
+  // Only show the "next cycle" fertile window when a prediction exists (it would be in a future month).
+  // Without prediction data, getDayPhase already handles the current cycle's fertile window.
   const fertile    = prediction?.predicted_date
     ? getFertileWindow(prediction.predicted_date, avgLen)
-    : settings?.last_period_start
-    ? getFertileWindow(settings.last_period_start, avgLen)
     : null;
 
   const deleteLog = useMutation({

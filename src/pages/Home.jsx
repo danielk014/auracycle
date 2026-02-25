@@ -36,12 +36,17 @@ export default function Home() {
     queryFn: () => getCycleLogs(30),
   });
 
-  // Use computed average from actual logs when available, fall back to settings
+  // Use computed averages from actual logs when available, fall back to settings
   const allLogs = recentLogs; // recentLogs is last 30; for cycle calc that's enough
   const computedCycles = buildCycles(allLogs);
   const computedStats  = computeCycleStats(computedCycles);
   const cycleLength  = computedStats.avg || settings?.average_cycle_length  || 28;
-  const periodLength = settings?.average_period_length || 5;
+
+  // Average period length from actual logged cycles (span of consecutive period days)
+  const avgPeriodFromLogs = computedCycles.length > 0
+    ? Math.round(computedCycles.reduce((sum, c) => sum + c.periodLength, 0) / computedCycles.length)
+    : null;
+  const periodLength = avgPeriodFromLogs ?? settings?.average_period_length ?? 5;
   const lastPeriodStart = settings?.last_period_start;
 
   let cycleDay = 1;
@@ -151,6 +156,7 @@ export default function Home() {
           cycleLength={cycleLength}
           periodLength={periodLength}
           lastPeriod={lastPeriodStart ? format(new Date(lastPeriodStart), "MMM d") : null}
+          cyclesCount={computedCycles.length}
         />
       </div>
 
