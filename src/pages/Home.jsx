@@ -290,7 +290,7 @@ export default function Home() {
 
       {/* Next period expected */}
       <div className="mb-5">
-        {lastPeriodStart ? (
+        {lastPeriodStart && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
