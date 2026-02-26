@@ -29,7 +29,7 @@ const PHASE_INFO = {
   period:     { label: "Menstrual Phase",  color: "text-rose-600",   bg: "bg-rose-50",   desc: "Your period is here. Rest and stay hydrated." },
   follicular: { label: "Follicular Phase", color: "text-emerald-600",bg: "bg-emerald-50",desc: "Energy rising! Great time for new starts." },
   fertile:    { label: "Fertile Window 💗", color: "text-pink-600",   bg: "bg-pink-50",   desc: "Peak fertility! Your body is primed for conception." },
-  luteal:     { label: "Luteal Phase",     color: "text-yellow-700", bg: "bg-yellow-50", desc: "Wind down and prepare for self-care." },
+  luteal:     { label: "Luteal Phase",     color: "text-violet-700", bg: "bg-violet-50", desc: "Wind down and prepare for self-care." },
 };
 
 function getDayPhase(day, settings) {
@@ -292,7 +292,7 @@ export default function Calendar() {
                           <div className="flex flex-wrap gap-1.5">
                             {log.symptoms.map((s) => (
                               <span key={s} className="text-xs bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-100 font-medium">
-                                {s.replace(/_/g, " ")}
+                                {s.split(":")[0].replace(/_/g, " ")}
                               </span>
                             ))}
                           </div>

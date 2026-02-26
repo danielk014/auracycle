@@ -195,8 +195,8 @@ export default function CycleCalendar({
             bg   = "bg-teal-50";
             text = "text-teal-700";
           } else if (phase === "luteal") {
-            bg   = "bg-yellow-50";
-            text = "text-yellow-700";
+            bg   = "bg-violet-50";
+            text = "text-violet-700";
           } else if (phase === "follicular") {
             bg   = "bg-emerald-50/50";
             text = "text-emerald-700";
@@ -219,8 +219,16 @@ export default function CycleCalendar({
                 {format(day, "d")}
               </span>
 
-              {/* Bottom indicator dots — only for actual logged data */}
+              {/* Indicator dots — phase markers + logged data */}
               <div className="flex gap-0.5 mt-0.5 h-1.5 items-center">
+                {/* Phase dots: fertile=green, luteal=purple */}
+                {(isFertile || nextFertile) && !isPeriod && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                )}
+                {phase === "luteal" && !isPeriod && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                )}
+                {/* Logged data dots */}
                 {isPeriod   && <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
                 {hasSymptom && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
                 {hasMood    && <div className="w-1.5 h-1.5 rounded-full bg-pink-400" />}
@@ -237,7 +245,7 @@ export default function CycleCalendar({
           { dot: "bg-emerald-300", label: "Follicular" },
           { dot: "bg-teal-300",    label: "Fertile" },
           { dot: "bg-rose-300",    label: "Predicted", dashed: true },
-          { dot: "bg-yellow-300",  label: "Luteal" },
+          { dot: "bg-violet-300",  label: "Luteal" },
           { dot: "bg-amber-300",   label: "Symptoms" },
         ].map((item) => (
           <div key={item.label} className="flex items-center gap-1">

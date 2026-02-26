@@ -2,21 +2,24 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const SYMPTOMS = [
-  { id: "cramps", emoji: "🤕", label: "Cramps" },
-  { id: "headache", emoji: "🤯", label: "Headache" },
-  { id: "bloating", emoji: "🎈", label: "Bloating" },
-  { id: "fatigue", emoji: "😴", label: "Fatigue" },
-  { id: "backache", emoji: "💆", label: "Backache" },
-  { id: "nausea", emoji: "🤢", label: "Nausea" },
-  { id: "breast_tenderness", emoji: "💗", label: "Breast Tender." },
-  { id: "acne", emoji: "😣", label: "Acne" },
-  { id: "cravings", emoji: "🍫", label: "Cravings" },
-  { id: "insomnia", emoji: "🌙", label: "Insomnia" },
-  { id: "hot_flashes", emoji: "🔥", label: "Hot Flashes" },
-  { id: "dizziness", emoji: "💫", label: "Dizziness" },
-  { id: "joint_pain", emoji: "🦴", label: "Joint Pain" },
-  { id: "digestive", emoji: "🫃", label: "Digestive" },
-  { id: "migraine", emoji: "⚡", label: "Migraine" },
+  { id: "everything_fine",    emoji: "👍", label: "Everything is Fine" },
+  { id: "cramps",             emoji: "🤕", label: "Cramps" },
+  { id: "tender_breasts",     emoji: "💗", label: "Tender Breasts" },
+  { id: "headache",           emoji: "🤯", label: "Headache" },
+  { id: "acne",               emoji: "😣", label: "Acne" },
+  { id: "backache",           emoji: "💆", label: "Backache" },
+  { id: "fatigue",            emoji: "😴", label: "Fatigue" },
+  { id: "cravings",           emoji: "🍫", label: "Cravings" },
+  { id: "insomnia",           emoji: "🌙", label: "Insomnia" },
+  { id: "abdominal_pain",     emoji: "🫃", label: "Abdominal Pain" },
+  { id: "vaginal_itching",    emoji: "⚠️", label: "Vaginal Itching" },
+  { id: "vaginal_dryness",    emoji: "💧", label: "Vaginal Dryness" },
+  { id: "bloating",           emoji: "🎈", label: "Bloating" },
+  { id: "nausea",             emoji: "🤢", label: "Nausea" },
+  { id: "hot_flashes",        emoji: "🔥", label: "Hot Flashes" },
+  { id: "dizziness",          emoji: "💫", label: "Dizziness" },
+  { id: "joint_pain",         emoji: "🦴", label: "Joint Pain" },
+  { id: "migraine",           emoji: "⚡", label: "Migraine" },
 ];
 
 const SEVERITY_LABELS = ["Mild", "Moderate", "Severe"];
@@ -38,7 +41,6 @@ export default function SymptomPicker({ selected = [], onChange }) {
 
   const toggle = (id) => {
     if (selectedMap[id] !== undefined) {
-      // deselect
       onChange(selected.filter((s) => !s.startsWith(id + ":")));
       if (severityTarget === id) setSeverityTarget(null);
     } else {

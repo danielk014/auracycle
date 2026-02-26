@@ -316,15 +316,6 @@ export default function Home() {
               </p>
             )}
           </motion.div>
-        ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-            <Link
-              to={createPageUrl("Settings")}
-              className="text-sm text-violet-500 font-semibold hover:text-violet-600 transition-colors"
-            >
-              Set your last period date to get started →
-            </Link>
-          </motion.div>
         )}
       </div>
 
