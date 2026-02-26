@@ -189,11 +189,11 @@ export default function CycleCalendar({
             text   = "text-rose-400";
             border = "border border-dashed border-rose-200";
           } else if (nextFertile) {
-            bg   = "bg-teal-50";
-            text = "text-teal-700";
+            bg   = "bg-emerald-100";
+            text = "text-emerald-800";
           } else if (isFertile) {
-            bg   = "bg-teal-50";
-            text = "text-teal-700";
+            bg   = "bg-emerald-100";
+            text = "text-emerald-800";
           } else if (phase === "luteal") {
             bg   = "bg-violet-50";
             text = "text-violet-700";
@@ -243,7 +243,7 @@ export default function CycleCalendar({
         {[
           { dot: "bg-rose-400",    label: "Period" },
           { dot: "bg-emerald-300", label: "Follicular" },
-          { dot: "bg-teal-300",    label: "Fertile" },
+          { dot: "bg-emerald-500",  label: "Fertile" },
           { dot: "bg-rose-300",    label: "Predicted", dashed: true },
           { dot: "bg-violet-300",  label: "Luteal" },
           { dot: "bg-amber-300",   label: "Symptoms" },
