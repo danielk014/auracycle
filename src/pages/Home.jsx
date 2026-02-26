@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { differenceInDays, addDays, format, parseISO } from "date-fns";
+import { differenceInDays, addDays, format, parseISO, isAfter } from "date-fns";
 import CycleWheel from "@/components/dashboard/CycleWheel";
 import QuickStats from "@/components/dashboard/QuickStats";
 import DailyTip from "@/components/dashboard/DailyTip";
@@ -83,11 +83,19 @@ export default function Home() {
   // ── Prediction arrival banner ──────────────────────────────
   const prediction = predictNextPeriod(computedCycles, settings);
   const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  // How many days past the predicted date we are (positive = late)
+  const daysLate = prediction?.predicted_date
+    ? differenceInDays(new Date(), parseISO(prediction.predicted_date))
+    : 0;
+
+  // Show banner during the prediction window AND for up to 7 extra days if period is late
   const isPredictionWindow = prediction &&
     todayStr >= prediction.range_start &&
-    todayStr <= prediction.range_end &&
+    todayStr <= format(addDays(parseISO(prediction.range_end), 7), "yyyy-MM-dd") &&
     // Don't show if user already logged a period on/after the predicted start
     !(settings?.last_period_start && settings.last_period_start >= prediction.range_start);
+
   const predDismissKey = `pred_period_dismissed_${todayStr}`;
   const [showPredBanner, setShowPredBanner] = useState(() => {
     try { return !localStorage.getItem(predDismissKey); } catch { return true; }
@@ -138,22 +146,46 @@ export default function Home() {
             initial={{ opacity: 0, y: -8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
-            className="bg-violet-50 border border-violet-200 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
+            className={`border rounded-2xl px-4 py-3 mb-4 flex items-center gap-3 ${
+              daysLate > 2
+                ? "bg-amber-50 border-amber-200"
+                : "bg-violet-50 border-violet-200"
+            }`}
           >
             <div className="flex-1">
-              <p className="text-sm font-semibold text-violet-700">Did your period start today?</p>
-              <p className="text-xs text-violet-400 mt-0.5">Your predicted window is here</p>
+              <p className={`text-sm font-semibold ${daysLate > 2 ? "text-amber-700" : "text-violet-700"}`}>
+                Did your period start today?
+              </p>
+              <p className={`text-xs mt-0.5 ${daysLate > 2 ? "text-amber-500" : "text-violet-400"}`}>
+                {daysLate > 2
+                  ? `${daysLate} day${daysLate === 1 ? "" : "s"} past expected — small delays are normal`
+                  : "Your predicted window is here"}
+              </p>
             </div>
             <button
               onClick={() => confirmPeriodStarted.mutate()}
               disabled={confirmPeriodStarted.isPending}
-              className="flex items-center gap-1.5 bg-violet-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-violet-600 transition-colors"
+              className={`flex items-center gap-1.5 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors ${
+                daysLate > 2
+                  ? "bg-amber-500 hover:bg-amber-600"
+                  : "bg-violet-500 hover:bg-violet-600"
+              }`}
             >
               Yes
             </button>
             <button
-              onClick={() => { try { localStorage.setItem(predDismissKey, "1"); } catch {} setShowPredBanner(false); }}
-              className="text-xs font-semibold text-violet-300 hover:text-violet-500 px-1"
+              onClick={() => {
+                try { localStorage.setItem(predDismissKey, "1"); } catch {}
+                setShowPredBanner(false);
+                if (daysLate > 0) {
+                  toast("Got it — we'll keep watching 💜", { duration: 2500 });
+                }
+              }}
+              className={`text-xs font-semibold px-1 transition-colors ${
+                daysLate > 2
+                  ? "text-amber-300 hover:text-amber-600"
+                  : "text-violet-300 hover:text-violet-500"
+              }`}
             >
               Not yet
             </button>
@@ -210,15 +242,31 @@ export default function Home() {
       {/* Next period expected */}
       <div className="mb-5">
         {lastPeriodStart ? (
-          <motion.p
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="text-center text-sm text-slate-400"
+            className="text-center"
           >
-            Next period expected around{" "}
-            <span className="font-semibold text-rose-400">{nextPeriodDate}</span>
-          </motion.p>
+            {daysLate > 2 && isPredictionWindow ? (
+              <p className="text-sm text-amber-500">
+                Period expected{" "}
+                <span className="font-semibold">
+                  {prediction?.predicted_date
+                    ? format(parseISO(prediction.predicted_date), "MMM d")
+                    : nextPeriodDate}
+                </span>
+                <span className="ml-1 text-amber-400">
+                  ({daysLate} day{daysLate === 1 ? "" : "s"} late)
+                </span>
+              </p>
+            ) : (
+              <p className="text-sm text-slate-400">
+                Next period expected around{" "}
+                <span className="font-semibold text-rose-400">{nextPeriodDate}</span>
+              </p>
+            )}
+          </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
             <Link

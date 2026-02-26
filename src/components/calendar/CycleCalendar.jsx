@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -9,6 +9,7 @@ import {
   getDay,
   addMonths,
   subMonths,
+  addDays,
   isSameDay,
   isToday,
   differenceInDays,
@@ -51,6 +52,17 @@ function isPredictedMidDay(day, prediction) {
   catch { return false; }
 }
 
+// Days after the predicted start up to the expected period duration
+function isPredictedPeriodBodyDay(day, prediction, periodLength = 5) {
+  if (!prediction?.predicted_date) return false;
+  try {
+    const start = addDays(parseISO(prediction.predicted_date), 1);
+    const end   = addDays(parseISO(prediction.predicted_date), periodLength - 1);
+    if (end < start) return false;
+    return isWithinInterval(day, { start, end });
+  } catch { return false; }
+}
+
 function isNextFertileDay(day, fertileWindow) {
   if (!fertileWindow?.start || !fertileWindow?.end) return false;
   try {
@@ -60,29 +72,52 @@ function isNextFertileDay(day, fertileWindow) {
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
-// Small colored pill/dot shown at the top of a calendar cell
-function CellDot({ color }) {
-  return (
-    <div
-      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color}`}
-      style={{ marginBottom: 1 }}
-    />
-  );
-}
+const SWIPE_THRESHOLD = 50; // px
 
-export default function CycleCalendar({ logs = [], settings, prediction, fertileWindow, onDayClick, selectedDay }) {
+export default function CycleCalendar({
+  logs = [],
+  settings,
+  prediction,
+  fertileWindow,
+  onDayClick,
+  selectedDay,
+  periodLength = 5,
+}) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const touchStartX = useRef(null);
+  const touchStartY = useRef(null);
 
   const monthStart   = startOfMonth(currentMonth);
   const monthEnd     = endOfMonth(currentMonth);
   const days         = eachDayOfInterval({ start: monthStart, end: monthEnd });
   const startPadding = getDay(monthStart);
 
-  // Use parseISO so "2026-02-25" is always treated as local midnight, not UTC midnight
   const getLogsForDay = (day) => logs.filter((l) => isSameDay(parseISO(l.date), day));
 
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    // Only treat as swipe if horizontal movement dominates and exceeds threshold
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+      if (dx < 0) setCurrentMonth((m) => addMonths(m, 1));  // swipe left → next month
+      else        setCurrentMonth((m) => subMonths(m, 1));  // swipe right → prev month
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+  };
+
   return (
-    <div className="bg-white rounded-3xl p-4 shadow-sm border border-purple-50">
+    <div
+      className="bg-white rounded-3xl p-4 shadow-sm border border-purple-50 select-none"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Month nav */}
       <div className="flex items-center justify-between mb-4">
         <button
@@ -121,19 +156,21 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
           const isPeriod   = dayLogs.some((l) => l.log_type === "period");
           const hasSymptom = dayLogs.some((l) => l.symptoms?.length > 0);
           const hasMood    = dayLogs.some((l) => l.moods?.length > 0);
-          const hasLog     = dayLogs.length > 0;
           const today      = isToday(day);
           const isSelected = selectedDay && isSameDay(day, selectedDay);
           const phase      = getDayPhase(day, settings);
 
           const predMid    = !isPeriod && isPredictedMidDay(day, prediction);
           const predPeriod = !isPeriod && !predMid && isPredictedPeriodDay(day, prediction);
-          const nextFertile= !isPeriod && !predPeriod && !predMid && isNextFertileDay(day, fertileWindow);
-          const isFertile  = !isPeriod && !predPeriod && !predMid && !nextFertile && phase === "fertile";
+          // Body days = predicted start+1 through predicted start+(periodLength-1)
+          // Only show if not already covered by the confidence range
+          const predBody   = !isPeriod && !predMid && !predPeriod && isPredictedPeriodBodyDay(day, prediction, periodLength);
+          const nextFertile= !isPeriod && !predPeriod && !predMid && !predBody && isNextFertileDay(day, fertileWindow);
+          const isFertile  = !isPeriod && !predPeriod && !predMid && !predBody && !nextFertile && phase === "fertile";
 
           // Background — real data wins over predictions
-          let bg   = "";
-          let text = "text-slate-600";
+          let bg     = "";
+          let text   = "text-slate-600";
           let border = "";
 
           if (isPeriod) {
@@ -144,10 +181,14 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
             text = "text-rose-700 font-semibold";
             border = "ring-1 ring-rose-300 ring-inset";
           } else if (predPeriod) {
-            bg   = "bg-rose-50";
-            text = "text-rose-500";
+            bg     = "bg-rose-50";
+            text   = "text-rose-500";
             border = "ring-1 ring-rose-200 ring-inset ring-offset-0";
             border += " [outline:1.5px_dashed_#fca5a5] outline-offset-[-1.5px]";
+          } else if (predBody) {
+            bg     = "bg-rose-50/70";
+            text   = "text-rose-400";
+            border = "[outline:1px_dashed_#fecaca] outline-offset-[-1px]";
           } else if (nextFertile) {
             bg   = "bg-teal-50";
             text = "text-teal-700";
@@ -174,15 +215,16 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
                 ${!bg ? "hover:bg-slate-50" : ""}
               `}
             >
-              {/* Top phase dot — colored circle matching legend color */}
-              {(phase || predPeriod || predMid) && (
+              {/* Top phase dot */}
+              {(phase || predPeriod || predMid || predBody) && (
                 <div className={`w-1.5 h-1.5 rounded-full mb-0.5 flex-shrink-0 ${
                   phase === "period"              ? "bg-rose-500"    :
                   (isFertile || nextFertile)      ? "bg-teal-400"    :
                   predMid                         ? "bg-rose-500"    :
                   predPeriod                      ? "bg-rose-300"    :
+                  predBody                        ? "bg-rose-200"    :
                   phase === "luteal"              ? "bg-yellow-400"  :
-                                                    "bg-emerald-400"  // follicular
+                                                    "bg-emerald-400"
                 }`} />
               )}
 
@@ -202,7 +244,7 @@ export default function CycleCalendar({ logs = [], settings, prediction, fertile
         })}
       </div>
 
-      {/* Legend — colored dots only, no emojis */}
+      {/* Legend */}
       <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-3 border-t border-slate-50">
         {[
           { dot: "bg-rose-400",    label: "Period" },

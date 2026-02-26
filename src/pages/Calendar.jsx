@@ -66,6 +66,11 @@ export default function Calendar() {
   const cycleStats = computeCycleStats(cycles);
   const prediction = predictNextPeriod(cycles, settings);
   const avgLen     = cycleStats.avg || settings?.average_cycle_length || 28;
+  // Average period length from logged cycles; fall back to settings or default
+  const avgPeriodFromLogs = cycles.length >= 2
+    ? Math.round(cycles.reduce((sum, c) => sum + c.periodLength, 0) / cycles.length)
+    : null;
+  const periodLength = avgPeriodFromLogs ?? settings?.average_period_length ?? 5;
   // Only show the "next cycle" fertile window when a prediction exists (it would be in a future month).
   // Without prediction data, getDayPhase already handles the current cycle's fertile window.
   const fertile    = prediction?.predicted_date
@@ -153,6 +158,7 @@ export default function Calendar() {
           settings={settings}
           prediction={prediction}
           fertileWindow={fertile}
+          periodLength={periodLength}
           onDayClick={setSelectedDay}
           selectedDay={selectedDay}
         />
