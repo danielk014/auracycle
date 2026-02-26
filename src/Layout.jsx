@@ -23,9 +23,12 @@ export default function Layout({ children, currentPageName }) {
       </main>
 
       {showNav && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-purple-100 shadow-[0_-4px_24px_rgba(139,92,246,0.08)]">
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-purple-100 shadow-[0_-4px_24px_rgba(139,92,246,0.08)]"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           <div className="max-w-lg mx-auto">
-            <div className="flex items-center justify-around px-2 py-2 pb-safe">
+            <div className="flex items-center justify-around px-2 py-2">
                 {NAV_ITEMS.map((item) => {
                   const isActive = currentPageName === item.page;
                   return (

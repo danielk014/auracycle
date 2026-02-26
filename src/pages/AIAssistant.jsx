@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, Loader2, RotateCcw, ChevronRight } from "lucide-react";
+import { Send, Sparkles, Loader2, Trash2, ChevronRight, X } from "lucide-react";
 import { differenceInDays, format } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
@@ -81,8 +81,10 @@ export default function AIAssistant() {
       return [];
     }
   });
-  const [isLoading, setIsLoading] = useState(false);
-  const [activeCat, setActiveCat] = useState(0);
+  const [isLoading, setIsLoading]         = useState(false);
+  const [activeCat, setActiveCat]         = useState(0);
+  const [selectedMsgIdx, setSelectedMsgIdx] = useState(null); // tap-to-delete
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const chatEndRef   = useRef(null);
   const textareaRef  = useRef(null);
 
@@ -276,6 +278,18 @@ export default function AIAssistant() {
     }
   };
 
+  const deleteMessage = (idx) => {
+    setMessages((prev) => prev.filter((_, i) => i !== idx));
+    setSelectedMsgIdx(null);
+  };
+
+  const clearAllMessages = () => {
+    setMessages([]);
+    localStorage.removeItem(storageKey);
+    setShowClearConfirm(false);
+    setSelectedMsgIdx(null);
+  };
+
   const activeCategory = SUGGESTION_CATEGORIES[activeCat];
 
   return (
@@ -295,12 +309,33 @@ export default function AIAssistant() {
           </div>
         </div>
         {messages.length > 0 && (
-          <button
-            onClick={() => { setMessages([]); localStorage.removeItem(storageKey); }}
-            className="p-2 rounded-xl hover:bg-purple-50 transition-colors text-slate-400 hover:text-slate-600"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {showClearConfirm ? (
+              <>
+                <span className="text-xs text-slate-500">Clear all?</span>
+                <button
+                  onClick={clearAllMessages}
+                  className="text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 px-2.5 py-1 rounded-lg transition-colors"
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setShowClearConfirm(false)}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-600 px-1"
+                >
+                  No
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => { setShowClearConfirm(true); setSelectedMsgIdx(null); }}
+                className="p-2 rounded-xl hover:bg-rose-50 transition-colors text-slate-400 hover:text-rose-400"
+                title="Delete messages"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -372,7 +407,39 @@ export default function AIAssistant() {
         )}
 
         <AnimatePresence>
-          {messages.map((msg, i) => <ChatBubble key={i} message={msg} />)}
+          {messages.map((msg, i) => (
+            <motion.div
+              key={i}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative"
+              onClick={() => {
+                setSelectedMsgIdx(selectedMsgIdx === i ? null : i);
+                setShowClearConfirm(false);
+              }}
+            >
+              <ChatBubble message={msg} />
+              <AnimatePresence>
+                {selectedMsgIdx === i && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.7 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.7 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={(e) => { e.stopPropagation(); deleteMessage(i); }}
+                    className={`absolute top-0 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center shadow-md z-20 ${
+                      msg.role === "user" ? "-left-1" : "right-0"
+                    }`}
+                    title="Delete message"
+                  >
+                    <X className="w-3.5 h-3.5 text-white" />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          ))}
         </AnimatePresence>
 
         {isLoading && (

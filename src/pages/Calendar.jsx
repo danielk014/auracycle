@@ -46,7 +46,7 @@ function getDayPhase(day, settings) {
 }
 
 export default function Calendar() {
-  const [selectedDay,   setSelectedDay]   = useState(null);
+  const [selectedDay,   setSelectedDay]   = useState(() => new Date());
   const [activeFilter,  setActiveFilter]  = useState("all");
   const [confirmDelete, setConfirmDelete] = useState(null); // log id to confirm
   const queryClient = useQueryClient();
@@ -353,11 +353,6 @@ export default function Calendar() {
         )}
       </AnimatePresence>
 
-      {!selectedDay && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="text-center py-8">
-          <p className="text-sm text-slate-400">Tap a day to see your logs</p>
-        </motion.div>
-      )}
     </div>
   );
 }

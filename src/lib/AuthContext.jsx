@@ -132,10 +132,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    // Clear all caches so the next login starts fresh
-    if (user?.id) {
-      localStorage.removeItem(profileCacheKey(user.id));
-    }
+    // Clear settings cache but KEEP the profile cache — it's keyed by user ID
+    // so other users are unaffected, and keeping it prevents the onboarding
+    // screen from flashing on the next login before the profile fetch completes.
     clearSettingsCache();
     await supabase.auth.signOut();
     setUser(null);
