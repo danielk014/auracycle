@@ -80,6 +80,13 @@ export default function Home() {
   const isPeriodActive = phase === "period" && !settings?.last_period_end;
   const isEndedToday = settings?.last_period_end === format(new Date(), "yyyy-MM-dd");
 
+  // ── Daily log reminder ─────────────────────────────────────
+  const hasLoggedToday = recentLogs.some((l) => l.date === todayStr);
+  const logReminderKey = `log_reminder_dismissed_${todayStr}`;
+  const [showLogReminder, setShowLogReminder] = useState(() => {
+    try { return !localStorage.getItem(logReminderKey); } catch { return true; }
+  });
+
   // ── Prediction arrival banner ──────────────────────────────
   const prediction = predictNextPeriod(computedCycles, settings);
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -138,6 +145,45 @@ export default function Home() {
         </p>
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">AuraCycle</h1>
       </motion.div>
+
+      {/* Daily log reminder */}
+      <AnimatePresence>
+        {!hasLoggedToday && showLogReminder && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-100 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-violet-700">
+                {phase === "period" ? "Log today's flow & mood" : "Log your mood for today"}
+              </p>
+              <p className="text-xs text-violet-400 mt-0.5">Daily tracking improves your predictions</p>
+            </div>
+            <Link
+              to={`${createPageUrl("LogEntry")}?date=${todayStr}`}
+              onClick={() => {
+                try { localStorage.setItem(logReminderKey, "1"); } catch {}
+                setShowLogReminder(false);
+              }}
+              className="flex items-center gap-1.5 bg-violet-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-violet-600 transition-colors flex-shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Log
+            </Link>
+            <button
+              onClick={() => {
+                try { localStorage.setItem(logReminderKey, "1"); } catch {}
+                setShowLogReminder(false);
+              }}
+              className="text-violet-300 hover:text-violet-500 flex-shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* "Predicted period" confirmation banner */}
       <AnimatePresence>

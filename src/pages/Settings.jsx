@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ export default function Settings() {
   const { user, profile, logout } = useAuth();
   const queryClient = useQueryClient();
   const [saved, setSaved] = useState(false);
+  // Only populate the form once — prevent re-fetch from overwriting unsaved edits
+  const initialized = useRef(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["cycleSettings"],
@@ -36,19 +38,21 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    if (settings) {
+    // Only initialise the form from the DB once — re-fetches must not wipe unsaved edits
+    if (settings && !initialized.current) {
+      initialized.current = true;
       setForm({
-        average_cycle_length:    settings.average_cycle_length    || 28,
-        average_period_length:   settings.average_period_length   || 5,
-        last_period_start:       settings.last_period_start       || "",
-        last_period_end:         settings.last_period_end         || "",
-        notifications_enabled:   settings.notifications_enabled   ?? false,
-        reminder_period_before:  settings.reminder_period_before  ?? 2,
-        reminder_period_time:    settings.reminder_period_time    || "08:00",
+        average_cycle_length:      settings.average_cycle_length      || 28,
+        average_period_length:     settings.average_period_length     || 5,
+        last_period_start:         settings.last_period_start         || "",
+        last_period_end:           settings.last_period_end           || "",
+        notifications_enabled:     settings.notifications_enabled     ?? false,
+        reminder_period_before:    settings.reminder_period_before    ?? 2,
+        reminder_period_time:      settings.reminder_period_time      || "08:00",
         reminder_symptoms_enabled: settings.reminder_symptoms_enabled ?? false,
-        reminder_symptoms_time:  settings.reminder_symptoms_time  || "20:00",
-        reminder_mood_enabled:   settings.reminder_mood_enabled   ?? false,
-        reminder_mood_time:      settings.reminder_mood_time      || "21:00",
+        reminder_symptoms_time:    settings.reminder_symptoms_time    || "20:00",
+        reminder_mood_enabled:     settings.reminder_mood_enabled     ?? false,
+        reminder_mood_time:        settings.reminder_mood_time        || "21:00",
       });
     }
   }, [settings]);
@@ -57,17 +61,25 @@ export default function Settings() {
     mutationFn: () =>
       upsertCycleSettings({
         ...form,
-        average_cycle_length:  parseInt(form.average_cycle_length),
-        average_period_length: parseInt(form.average_period_length),
-        reminder_period_before: parseInt(form.reminder_period_before),
+        average_cycle_length:   parseInt(form.average_cycle_length,  10),
+        average_period_length:  parseInt(form.average_period_length, 10),
+        reminder_period_before: parseInt(form.reminder_period_before, 10),
+        // Empty strings are not valid dates for PostgreSQL — send null instead
+        last_period_start: form.last_period_start || null,
+        last_period_end:   form.last_period_end   || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cycleSettings"] });
+      // Allow the form to reinitialise from the saved data on the NEXT mount
+      initialized.current = false;
       setSaved(true);
       toast.success("Settings saved!");
       setTimeout(() => setSaved(false), 2500);
     },
-    onError: () => toast.error("Failed to save settings."),
+    onError: (err) => {
+      console.error("Settings save error:", err);
+      toast.error("Failed to save settings.");
+    },
   });
 
   const handleToggleNotifications = async () => {

@@ -91,8 +91,7 @@ export function computeCycleStats(cycles) {
  */
 export function predictNextPeriod(cycles, settings) {
   const completed = cycles.filter((c) => c.cycleLength !== null);
-  if (cycles.length === 0) return null;
-
+  // Don't bail when cycles is empty — we can still predict from settings.last_period_start
   const stats = computeCycleStats(cycles);
 
   // Weighted average: recent cycles count more

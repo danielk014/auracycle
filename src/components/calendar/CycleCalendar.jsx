@@ -183,12 +183,11 @@ export default function CycleCalendar({
           } else if (predPeriod) {
             bg     = "bg-rose-50";
             text   = "text-rose-500";
-            border = "ring-1 ring-rose-200 ring-inset ring-offset-0";
-            border += " [outline:1.5px_dashed_#fca5a5] outline-offset-[-1.5px]";
+            border = "border-2 border-dashed border-rose-300";
           } else if (predBody) {
-            bg     = "bg-rose-50/70";
+            bg     = "bg-rose-50/60";
             text   = "text-rose-400";
-            border = "[outline:1px_dashed_#fecaca] outline-offset-[-1px]";
+            border = "border border-dashed border-rose-200";
           } else if (nextFertile) {
             bg   = "bg-teal-50";
             text = "text-teal-700";
