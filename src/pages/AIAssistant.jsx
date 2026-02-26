@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, Loader2, Trash2, ChevronRight, X } from "lucide-react";
+import { Send, Sparkles, Loader2, Trash2, ChevronRight, Check } from "lucide-react";
 import { differenceInDays, format } from "date-fns";
 import ChatBubble from "@/components/chat/ChatBubble";
 import { getCycleLogs, getCycleSettings } from "@/lib/db";
@@ -83,20 +83,23 @@ export default function AIAssistant() {
   });
   const [isLoading, setIsLoading]         = useState(false);
   const [activeCat, setActiveCat]         = useState(0);
-  const [selectedMsgIdx, setSelectedMsgIdx] = useState(null); // tap-to-delete
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState(new Set());
   const chatEndRef   = useRef(null);
   const textareaRef  = useRef(null);
 
   // Fetch ALL logs — RLS at DB level guarantees this user only sees their own data
+  // Query keys include user ID to prevent cross-user cache collisions
   const { data: logs = [] } = useQuery({
-    queryKey: ["cycleLogs"],
+    queryKey: ["cycleLogs", user?.id],
     queryFn: () => getCycleLogs(500),
+    enabled: !!user?.id,
   });
 
   const { data: settings } = useQuery({
-    queryKey: ["cycleSettings"],
+    queryKey: ["cycleSettings", user?.id],
     queryFn: getCycleSettings,
+    enabled: !!user?.id,
   });
 
   useEffect(() => {
@@ -105,7 +108,7 @@ export default function AIAssistant() {
 
   useEffect(() => {
     try {
-      // Keep last 100 messages to avoid storage bloat
+      // Keep last 100 messages to avoid storage bloat; keyed by user ID — no cross-user leakage
       localStorage.setItem(storageKey, JSON.stringify(messages.slice(-100)));
     } catch {}
   }, [messages, storageKey]);
@@ -278,17 +281,41 @@ export default function AIAssistant() {
     }
   };
 
-  const deleteMessage = (idx) => {
-    setMessages((prev) => prev.filter((_, i) => i !== idx));
-    setSelectedMsgIdx(null);
+  // ── Selection mode helpers ────────────────────────────────────
+  const enterSelectionMode = () => {
+    setIsSelectionMode(true);
+    setSelectedMessages(new Set());
+  };
+
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedMessages(new Set());
+  };
+
+  const toggleMessageSelection = (idx) => {
+    setSelectedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const selectAllMessages = () => {
+    setSelectedMessages(new Set(messages.map((_, i) => i)));
+  };
+
+  const deleteSelectedMessages = () => {
+    setMessages((prev) => prev.filter((_, i) => !selectedMessages.has(i)));
+    exitSelectionMode();
   };
 
   const clearAllMessages = () => {
     setMessages([]);
     localStorage.removeItem(storageKey);
-    setShowClearConfirm(false);
-    setSelectedMsgIdx(null);
+    exitSelectionMode();
   };
+  // ─────────────────────────────────────────────────────────────
 
   const activeCategory = SUGGESTION_CATEGORIES[activeCat];
 
@@ -296,46 +323,54 @@ export default function AIAssistant() {
     <div className="flex flex-col h-screen pb-16 max-w-lg mx-auto" style={{ background: "linear-gradient(160deg, #faf5ff 0%, #fff0f8 100%)" }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-10 pb-3 bg-white/70 backdrop-blur-xl border-b border-purple-50 shadow-sm">
-        <div className="flex items-center gap-2.5 flex-1">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center shadow-md shadow-violet-200">
-            <Sparkles className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-800">Luna AI</h2>
-            <p className="text-[11px] text-slate-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-              Your health companion
-            </p>
-          </div>
-        </div>
-        {messages.length > 0 && (
-          <div className="flex items-center gap-2">
-            {showClearConfirm ? (
-              <>
-                <span className="text-xs text-slate-500">Clear all?</span>
-                <button
-                  onClick={clearAllMessages}
-                  className="text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 px-2.5 py-1 rounded-lg transition-colors"
-                >
-                  Yes
-                </button>
-                <button
-                  onClick={() => setShowClearConfirm(false)}
-                  className="text-xs font-semibold text-slate-400 hover:text-slate-600 px-1"
-                >
-                  No
-                </button>
-              </>
-            ) : (
+        {isSelectionMode ? (
+          /* Selection mode header */
+          <>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-slate-700">
+                {selectedMessages.size > 0 ? `${selectedMessages.size} selected` : "Select messages"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => { setShowClearConfirm(true); setSelectedMsgIdx(null); }}
+                onClick={selectAllMessages}
+                className="text-xs font-semibold text-violet-600 px-2.5 py-1 rounded-lg hover:bg-violet-50 transition-colors"
+              >
+                All
+              </button>
+              <button
+                onClick={exitSelectionMode}
+                className="text-xs font-semibold text-slate-500 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          /* Normal header */
+          <>
+            <div className="flex items-center gap-2.5 flex-1">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center shadow-md shadow-violet-200">
+                <Sparkles className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Luna AI</h2>
+                <p className="text-[11px] text-slate-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                  Your health companion
+                </p>
+              </div>
+            </div>
+            {messages.length > 0 && (
+              <button
+                onClick={enterSelectionMode}
                 className="p-2 rounded-xl hover:bg-rose-50 transition-colors text-slate-400 hover:text-rose-400"
-                title="Delete messages"
+                title="Manage messages"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             )}
-          </div>
+          </>
         )}
       </div>
 
@@ -414,30 +449,28 @@ export default function AIAssistant() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative"
-              onClick={() => {
-                setSelectedMsgIdx(selectedMsgIdx === i ? null : i);
-                setShowClearConfirm(false);
-              }}
+              className={`relative flex items-center gap-2 ${isSelectionMode ? "cursor-pointer" : ""}`}
+              onClick={() => isSelectionMode && toggleMessageSelection(i)}
             >
-              <ChatBubble message={msg} />
-              <AnimatePresence>
-                {selectedMsgIdx === i && (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.7 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.7 }}
-                    transition={{ duration: 0.15 }}
-                    onClick={(e) => { e.stopPropagation(); deleteMessage(i); }}
-                    className={`absolute top-0 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center shadow-md z-20 ${
-                      msg.role === "user" ? "-left-1" : "right-0"
-                    }`}
-                    title="Delete message"
-                  >
-                    <X className="w-3.5 h-3.5 text-white" />
-                  </motion.button>
-                )}
-              </AnimatePresence>
+              {/* Selection checkbox — shown on the left in selection mode */}
+              {isSelectionMode && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.7 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.7 }}
+                  className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                    selectedMessages.has(i)
+                      ? "bg-violet-500 border-violet-500"
+                      : "bg-white border-slate-300"
+                  }`}
+                >
+                  {selectedMessages.has(i) && <Check className="w-3 h-3 text-white" />}
+                </motion.div>
+              )}
+
+              <div className={`flex-1 ${isSelectionMode && selectedMessages.has(i) ? "opacity-70" : ""}`}>
+                <ChatBubble message={msg} />
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -464,41 +497,70 @@ export default function AIAssistant() {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="px-4 pt-3 pb-6 bg-white/90 backdrop-blur-xl border-t border-purple-50 shadow-[0_-4px_16px_rgba(139,92,246,0.06)]">
-        <form
-          onSubmit={(e) => { e.preventDefault(); sendMessage(input); }}
-          className="flex items-end gap-2"
-        >
-          <div className="flex-1 bg-slate-50 rounded-2xl border border-purple-100 focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100 transition-all">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage(input);
-                }
-              }}
-              placeholder="Ask Luna anything about your cycle..."
-              rows={1}
-              className="w-full bg-transparent px-4 py-3 text-sm resize-none focus:outline-none text-slate-700 placeholder:text-slate-400 leading-relaxed"
-              style={{ maxHeight: 120, minHeight: 44 }}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 flex-shrink-0 shadow-md shadow-violet-200 disabled:opacity-40 disabled:shadow-none transition-all flex items-center justify-center"
+      {/* Selection mode action bar */}
+      <AnimatePresence>
+        {isSelectionMode && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.18 }}
+            className="px-4 pt-3 pb-6 bg-white/95 backdrop-blur-xl border-t border-purple-50 shadow-[0_-4px_16px_rgba(139,92,246,0.06)] flex gap-2"
           >
-            {isLoading
-              ? <Loader2 className="w-4 h-4 text-white animate-spin" />
-              : <Send className="w-4 h-4 text-white" />
-            }
-          </button>
-        </form>
-      </div>
+            <button
+              onClick={clearAllMessages}
+              className="flex-1 py-2.5 rounded-2xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition-colors"
+            >
+              Clear All
+            </button>
+            <button
+              onClick={deleteSelectedMessages}
+              disabled={selectedMessages.size === 0}
+              className="flex-1 py-2.5 rounded-2xl bg-rose-500 text-white text-sm font-semibold hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {selectedMessages.size > 0 ? `Delete (${selectedMessages.size})` : "Delete"}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Input — hidden during selection mode */}
+      {!isSelectionMode && (
+        <div className="px-4 pt-3 pb-6 bg-white/90 backdrop-blur-xl border-t border-purple-50 shadow-[0_-4px_16px_rgba(139,92,246,0.06)]">
+          <form
+            onSubmit={(e) => { e.preventDefault(); sendMessage(input); }}
+            className="flex items-end gap-2"
+          >
+            <div className="flex-1 bg-slate-50 rounded-2xl border border-purple-100 focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100 transition-all">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage(input);
+                  }
+                }}
+                placeholder="Ask Luna anything about your cycle..."
+                rows={1}
+                className="w-full bg-transparent px-4 py-3 text-sm resize-none focus:outline-none text-slate-700 placeholder:text-slate-400 leading-relaxed"
+                style={{ maxHeight: 120, minHeight: 44 }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 flex-shrink-0 shadow-md shadow-violet-200 disabled:opacity-40 disabled:shadow-none transition-all flex items-center justify-center"
+            >
+              {isLoading
+                ? <Loader2 className="w-4 h-4 text-white animate-spin" />
+                : <Send className="w-4 h-4 text-white" />
+              }
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

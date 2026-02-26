@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import { clearSettingsCache } from "./db";
+import { queryClientInstance } from "./query-client";
 
 const AuthContext = createContext(null);
 
@@ -98,6 +99,9 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (event === "SIGNED_OUT") {
+          // Clear ALL cached data so no user's data leaks to the next session
+          clearSettingsCache();
+          queryClientInstance.clear();
           setUser(null);
           profileRef.current = null;
           setProfile(null);
@@ -132,10 +136,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    // Clear settings cache but KEEP the profile cache — it's keyed by user ID
-    // so other users are unaffected, and keeping it prevents the onboarding
-    // screen from flashing on the next login before the profile fetch completes.
+    // Clear all caches before signing out to prevent any data leaking to the next user.
+    // Profile cache is keyed by user ID so clearing it is safe — each user's profile
+    // is stored under their own key and will be re-fetched on next login.
     clearSettingsCache();
+    queryClientInstance.clear();
     await supabase.auth.signOut();
     setUser(null);
     profileRef.current = null;
