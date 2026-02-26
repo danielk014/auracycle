@@ -87,6 +87,9 @@ export default function Home() {
   // ── Daily log reminder ─────────────────────────────────────
   const hasLoggedToday = recentLogs.some((l) => l.date === todayStr);
   const logReminderKey = `log_reminder_dismissed_${todayStr}`;
+  const [showLogReminder, setShowLogReminder] = useState(() => {
+    try { return !localStorage.getItem(logReminderKey); } catch { return true; }
+  });
 
   // How many days past the predicted date we are (positive = late)
   const daysLate = prediction?.predicted_date
