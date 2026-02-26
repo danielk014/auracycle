@@ -214,25 +214,12 @@ export default function CycleCalendar({
                 ${!bg ? "hover:bg-slate-50" : ""}
               `}
             >
-              {/* Top phase dot */}
-              {(phase || predPeriod || predMid || predBody) && (
-                <div className={`w-1.5 h-1.5 rounded-full mb-0.5 flex-shrink-0 ${
-                  phase === "period"              ? "bg-rose-500"    :
-                  (isFertile || nextFertile)      ? "bg-teal-400"    :
-                  predMid                         ? "bg-rose-500"    :
-                  predPeriod                      ? "bg-rose-300"    :
-                  predBody                        ? "bg-rose-200"    :
-                  phase === "luteal"              ? "bg-yellow-400"  :
-                                                    "bg-emerald-400"
-                }`} />
-              )}
-
               {/* Date number */}
               <span className={`leading-none text-[13px] ${today ? "text-violet-600 font-bold" : ""}`}>
                 {format(day, "d")}
               </span>
 
-              {/* Bottom indicator dots for logged data */}
+              {/* Bottom indicator dots — only for actual logged data */}
               <div className="flex gap-0.5 mt-0.5 h-1.5 items-center">
                 {isPeriod   && <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
                 {hasSymptom && <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />}

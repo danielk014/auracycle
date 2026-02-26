@@ -76,6 +76,10 @@ export default function Home() {
   const phase = getPhase(cycleDay, cycleLength, periodLength);
   const [aiPrediction, setAiPrediction] = useState(null);
 
+  // ── Prediction arrival banner ──────────────────────────────
+  const prediction = predictNextPeriod(computedCycles, settings);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
   // ── Period-ended banner ────────────────────────────────────
   const isPeriodActive = phase === "period" && !settings?.last_period_end;
   const isEndedToday = settings?.last_period_end === format(new Date(), "yyyy-MM-dd");
@@ -83,13 +87,6 @@ export default function Home() {
   // ── Daily log reminder ─────────────────────────────────────
   const hasLoggedToday = recentLogs.some((l) => l.date === todayStr);
   const logReminderKey = `log_reminder_dismissed_${todayStr}`;
-  const [showLogReminder, setShowLogReminder] = useState(() => {
-    try { return !localStorage.getItem(logReminderKey); } catch { return true; }
-  });
-
-  // ── Prediction arrival banner ──────────────────────────────
-  const prediction = predictNextPeriod(computedCycles, settings);
-  const todayStr = format(new Date(), "yyyy-MM-dd");
 
   // How many days past the predicted date we are (positive = late)
   const daysLate = prediction?.predicted_date
