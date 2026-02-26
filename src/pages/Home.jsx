@@ -85,7 +85,10 @@ export default function Home() {
   const isEndedToday = settings?.last_period_end === format(new Date(), "yyyy-MM-dd");
 
   // ── Daily log reminder ─────────────────────────────────────
-  const hasLoggedToday = recentLogs.some((l) => l.date === todayStr);
+  // Only consider "logged today" if the entry has mood/symptoms/notes — not just an auto-filled period log
+  const hasLoggedToday = recentLogs.some((l) =>
+    l.date === todayStr && (l.moods?.length > 0 || l.symptoms?.length > 0 || l.notes)
+  );
   const logReminderKey = `log_reminder_dismissed_${todayStr}`;
   const [showLogReminder, setShowLogReminder] = useState(() => {
     try { return !localStorage.getItem(logReminderKey); } catch { return true; }
