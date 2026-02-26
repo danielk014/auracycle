@@ -280,7 +280,10 @@ export default function Home() {
         </Link>
       </div>
 
-      {/* Daily Tip — right under the wheel */}
+      {/* Next Period prediction card — right under wheel, computes instantly from cached settings */}
+      <AIPrediction logs={recentLogs} settings={settings} onPrediction={setAiPrediction} />
+
+      {/* Daily Tip */}
       <div className="mb-4">
         <DailyTip phase={phase} cycleDay={cycleDay} />
       </div>
@@ -335,8 +338,6 @@ export default function Home() {
           cyclesCount={computedCycles.length}
         />
       </div>
-
-      <AIPrediction logs={recentLogs} settings={settings} onPrediction={setAiPrediction} />
 
       {/* FABs */}
       <div className="fixed bottom-24 right-4 flex flex-col gap-3 z-10">

@@ -6,7 +6,7 @@ import { format, isSameDay, differenceInDays, parseISO } from "date-fns";
 import { Droplets, Brain, Heart, Pencil, Plus, Moon, Dumbbell, Droplet, Activity, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { getCycleLogs, getCycleSettings, getCycleSettingsCache, deleteCycleLog } from "@/lib/db";
+import { getCycleLogs, getCycleLogsCache, getCycleSettings, getCycleSettingsCache, deleteCycleLog } from "@/lib/db";
 import { buildCycles, computeCycleStats, predictNextPeriod, getFertileWindow } from "@/lib/cycleStats";
 import { toast } from "sonner";
 
@@ -54,6 +54,7 @@ export default function Calendar() {
   const { data: logs = [] } = useQuery({
     queryKey: ["cycleLogs"],
     queryFn: () => getCycleLogs(500),
+    initialData: getCycleLogsCache,
   });
 
   const { data: settings } = useQuery({
