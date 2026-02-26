@@ -53,7 +53,7 @@ export default function Calendar() {
 
   const { data: logs = [] } = useQuery({
     queryKey: ["cycleLogs"],
-    queryFn: () => getCycleLogs(200),
+    queryFn: () => getCycleLogs(500),
   });
 
   const { data: settings } = useQuery({

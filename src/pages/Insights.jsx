@@ -1,10 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, Brain, AlertTriangle, CheckCircle, Activity, CalendarDays, Droplets } from "lucide-react";
+import {
+  TrendingUp, Brain, AlertTriangle, CheckCircle, Activity,
+  CalendarDays, Droplets, Sparkles, Zap, RefreshCw,
+} from "lucide-react";
 import { getCycleLogs, getCycleSettings, getCycleSettingsCache } from "@/lib/db";
 import {
   buildCycles,
@@ -13,17 +16,20 @@ import {
   computeSymptomPatterns,
   predictNextPeriod,
 } from "@/lib/cycleStats";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, differenceInDays } from "date-fns";
 
 const COLORS = ["#8B5CF6", "#EC4899", "#F59E0B", "#34D399", "#3B82F6", "#EF4444"];
 const FLOW_ORDER = ["spotting", "light", "medium", "heavy"];
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function Insights() {
   const [activeSymptomTab, setActiveSymptomTab] = useState("frequency");
+  const [activeCorrelTab,  setActiveCorrelTab]  = useState("flow");
 
+  // ── 1 year+ of data ─────────────────────────────────────────
   const { data: logs = [] } = useQuery({
     queryKey: ["cycleLogs"],
-    queryFn: () => getCycleLogs(500),
+    queryFn: () => getCycleLogs(1000),
   });
 
   const { data: settings } = useQuery({
@@ -32,18 +38,16 @@ export default function Insights() {
     initialData: getCycleSettingsCache,
   });
 
-  // ── Cycle computations ─────────────────────────────────────
-  const cycles       = buildCycles(logs);
-  const stats        = computeCycleStats(cycles);
-  const irregularity = detectIrregularity(cycles);
-  const patterns     = computeSymptomPatterns(logs, cycles);
-  const prediction   = predictNextPeriod(cycles, settings);
+  // ── Core cycle computations ─────────────────────────────────
+  const cycles       = useMemo(() => buildCycles(logs),              [logs]);
+  const stats        = useMemo(() => computeCycleStats(cycles),      [cycles]);
+  const irregularity = useMemo(() => detectIrregularity(cycles),     [cycles]);
+  const patterns     = useMemo(() => computeSymptomPatterns(logs, cycles), [logs, cycles]);
+  const prediction   = useMemo(() => predictNextPeriod(cycles, settings),  [cycles, settings]);
 
-  // Avg period length from all logged cycles
   const avgPeriodLength = cycles.length > 0
-    ? Math.round(cycles.reduce((sum, c) => sum + c.periodLength, 0) / cycles.length)
-    : settings?.average_period_length || null;
-
+    ? Math.round(cycles.reduce((s, c) => s + c.periodLength, 0) / cycles.length)
+    : (settings?.average_period_length || null);
   const lastCycleLength = stats.last3.length > 0 ? stats.last3[stats.last3.length - 1] : null;
 
   const stabilityLabel = stats.stdDev === null ? null
@@ -52,7 +56,155 @@ export default function Insights() {
     : stats.stdDev <= 4.5 ? { text: "Slightly variable", cls: "bg-amber-50 text-amber-600" }
     :                        { text: "Variable",          cls: "bg-orange-50 text-orange-600" };
 
-  // ── Symptom frequency (normalize :severity suffixes) ──────
+  // ── Logs grouped by date ────────────────────────────────────
+  const logsByDate = useMemo(() => {
+    const map = {};
+    logs.forEach((l) => {
+      if (!l.date) return;
+      if (!map[l.date]) map[l.date] = { symptoms: [], flow: null, stress: null, sleep: null };
+      const d = map[l.date];
+      l.symptoms?.forEach((s) => d.symptoms.push(s.split(":")[0]));
+      if (l.flow_intensity) d.flow = l.flow_intensity.toLowerCase();
+      if (l.stress_level != null && d.stress === null) d.stress = l.stress_level;
+      if (l.sleep_hours  != null && d.sleep  === null) d.sleep  = l.sleep_hours;
+    });
+    return map;
+  }, [logs]);
+
+  // ── Symptom × Flow correlation ──────────────────────────────
+  const sfCorrelation = useMemo(() => {
+    const result = {};
+    Object.values(logsByDate).forEach((d) => {
+      if (!d.flow || d.symptoms.length === 0) return;
+      d.symptoms.forEach((s) => {
+        if (!result[s]) result[s] = { heavy: 0, medium: 0, light: 0, spotting: 0, total: 0 };
+        if (result[s][d.flow] !== undefined) {
+          result[s][d.flow]++;
+          result[s].total++;
+        }
+      });
+    });
+    return result;
+  }, [logsByDate]);
+
+  // ── Symptom × Stress correlation ───────────────────────────
+  const stressCorrelation = useMemo(() => {
+    const highStressDays = Object.values(logsByDate).filter((d) => d.stress >= 4);
+    const counts = {};
+    highStressDays.forEach((d) => d.symptoms.forEach((s) => {
+      counts[s] = (counts[s] || 0) + 1;
+    }));
+    return { counts, highStressDayCount: highStressDays.length };
+  }, [logsByDate]);
+
+  // ── Cross-cycle symptom patterns ───────────────────────────
+  const crossCycleData = useMemo(() => {
+    const map = {};
+    logs.forEach((log) => {
+      if (!log.symptoms?.length || !log.date) return;
+      const logDate = parseISO(log.date);
+      let cycleIdx = -1;
+      for (let i = 0; i < cycles.length; i++) {
+        const next = cycles[i + 1]?.startObj;
+        const inCycle = next
+          ? logDate >= cycles[i].startObj && logDate < next
+          : logDate >= cycles[i].startObj;
+        if (inCycle) { cycleIdx = i; break; }
+      }
+      if (cycleIdx < 0) return;
+      const cycleDay = differenceInDays(logDate, cycles[cycleIdx].startObj) + 1;
+      if (cycleDay < 1 || cycleDay > 42) return;
+      log.symptoms.forEach((raw) => {
+        const s = raw.split(":")[0];
+        if (!map[s]) map[s] = {};
+        if (!map[s][cycleIdx]) map[s][cycleIdx] = [];
+        map[s][cycleIdx].push(cycleDay);
+      });
+    });
+    return Object.entries(map)
+      .map(([s, cycleMap]) => {
+        const allDays = Object.values(cycleMap).flat();
+        const avgDay  = allDays.length
+          ? Math.round(allDays.reduce((a, b) => a + b, 0) / allDays.length)
+          : 0;
+        return {
+          symptom: s,
+          label: s.replace(/_/g, " "),
+          cycleMap,
+          uniqueCycles: Object.keys(cycleMap).length,
+          avgDay,
+        };
+      })
+      .filter((d) => d.uniqueCycles >= 2)
+      .sort((a, b) => b.uniqueCycles - a.uniqueCycles);
+  }, [logs, cycles]);
+
+  // ── Luna's AI-style insights ────────────────────────────────
+  const lunaInsights = useMemo(() => {
+    const out = [];
+
+    // Cross-cycle symptom consistency
+    crossCycleData.slice(0, 3).forEach((d) => {
+      if (d.uniqueCycles === cycles.length && cycles.length >= 2) {
+        out.push({
+          text: `${cap(d.label)} appeared in every one of your ${cycles.length} tracked cycles, always around day ${d.avgDay}`,
+          emoji: "🔁",
+        });
+      } else if (d.uniqueCycles >= 2) {
+        out.push({
+          text: `${cap(d.label)} showed up in ${d.uniqueCycles} of ${cycles.length} cycles, typically around day ${d.avgDay}`,
+          emoji: "🔁",
+        });
+      }
+    });
+
+    // Symptom × flow correlations
+    Object.entries(sfCorrelation)
+      .filter(([, d]) => d.total >= 3)
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 2)
+      .forEach(([s, d]) => {
+        const dominant = FLOW_ORDER
+          .map((f) => [f, d[f] || 0])
+          .sort((a, b) => b[1] - a[1])[0];
+        if (dominant[1] / d.total >= 0.55) {
+          out.push({
+            text: `${cap(s.replace(/_/g, " "))} tends to occur most on ${dominant[0]}-flow days (${dominant[1]} of ${d.total} times)`,
+            emoji: "💧",
+          });
+        }
+      });
+
+    // Symptom × stress
+    const { counts: sc, highStressDayCount: hsc } = stressCorrelation;
+    if (hsc >= 2) {
+      Object.entries(sc)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .forEach(([s, count]) => {
+          if (count >= 2) {
+            out.push({
+              text: `On ${count} of ${hsc} high-stress days, you also experienced ${s.replace(/_/g, " ")}`,
+              emoji: "⚡",
+            });
+          }
+        });
+    }
+
+    // Cycle stability
+    if (stats.stdDev !== null && stats.count >= 2) {
+      if (stats.stdDev <= 1.5) {
+        out.push({
+          text: `Your cycle is very consistent — only ±${stats.stdDev} days of variation across ${stats.count} cycles`,
+          emoji: "✨",
+        });
+      }
+    }
+
+    return out.slice(0, 6);
+  }, [crossCycleData, sfCorrelation, stressCorrelation, cycles, stats]);
+
+  // ── Symptom frequency & flow distribution ──────────────────
   const symptomFreq = {};
   logs.forEach((l) => l.symptoms?.forEach((s) => {
     const name = s.split(":")[0].replace(/_/g, " ");
@@ -63,46 +215,84 @@ export default function Insights() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
-  // ── Flow distribution (case-normalised, shown as % of total) ──
   const flowDist = {};
   logs.filter((l) => l.flow_intensity).forEach((l) => {
     const key = l.flow_intensity.toLowerCase();
     flowDist[key] = (flowDist[key] || 0) + 1;
   });
-  const flowData = FLOW_ORDER
-    .filter((k) => flowDist[k] > 0)
-    .map((k) => ({ name: k, value: flowDist[k] }));
+  const flowData  = FLOW_ORDER.filter((k) => flowDist[k] > 0).map((k) => ({ name: k, value: flowDist[k] }));
   const flowTotal = flowData.reduce((s, d) => s + d.value, 0);
-
-  const totalLogs = logs.length;
 
   const predRange = prediction
     ? `${format(parseISO(prediction.range_start), "MMM d")} – ${format(parseISO(prediction.range_end), "MMM d")}`
     : null;
 
+  const totalLogs = logs.length;
+
+  // ── Correlation display helpers ─────────────────────────────
+  const flowCorrelCards = Object.entries(sfCorrelation)
+    .filter(([, d]) => d.total >= 2)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 5)
+    .map(([s, d]) => {
+      const dominant = FLOW_ORDER.map((f) => ({ f, n: d[f] || 0 })).sort((a, b) => b.n - a.n)[0];
+      return { symptom: s.replace(/_/g, " "), dominant: dominant.f, dominantN: dominant.n, total: d.total, data: d };
+    });
+
+  const stressCorrelCards = Object.entries(stressCorrelation.counts)
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([s, count]) => ({ symptom: s.replace(/_/g, " "), count, total: stressCorrelation.highStressDayCount }));
+
+  const maxCycleDay = Math.min(stats.avg || 28, 30);
+
+  // ────────────────────────────────────────────────────────────
   return (
     <div className="pb-28 px-4 pt-10 max-w-lg mx-auto">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-5">
         <h1 className="text-2xl font-bold text-slate-800">Insights</h1>
-        <p className="text-sm text-slate-400 mt-0.5">Your cycle patterns at a glance</p>
+        <p className="text-sm text-slate-400 mt-0.5">Your patterns, analysed by Luna</p>
       </motion.div>
+
+      {/* ── Luna's Analysis ──────────────────────────────────── */}
+      {lunaInsights.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.04 }}
+          className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl p-5 mb-4 shadow-lg shadow-violet-200"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-white/80" />
+            <h3 className="text-sm font-bold text-white">Luna's Analysis</h3>
+          </div>
+          <div className="space-y-2.5">
+            {lunaInsights.map((ins, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <span className="text-base leading-none mt-0.5 flex-shrink-0">{ins.emoji}</span>
+                <p className="text-sm text-white/90 leading-snug">{ins.text}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* ── Cycle Overview ───────────────────────────────────── */}
       {(stats.avg || avgPeriodLength) && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
+          transition={{ delay: 0.06 }}
           className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
         >
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-3">
             <Activity className="w-4 h-4 text-violet-500" />
             <h3 className="text-sm font-bold text-slate-700">Cycle Overview</h3>
           </div>
-
           <div className="divide-y divide-slate-50">
             {stats.avg && (
-              <div className="flex items-center justify-between py-3">
+              <div className="flex items-center justify-between py-2.5">
                 <span className="text-sm text-slate-500">Avg cycle length</span>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-slate-800">{stats.avg} days</span>
@@ -115,27 +305,217 @@ export default function Insights() {
               </div>
             )}
             {avgPeriodLength && (
-              <div className="flex items-center justify-between py-3">
+              <div className="flex items-center justify-between py-2.5">
                 <span className="text-sm text-slate-500">Avg period length</span>
                 <span className="text-sm font-bold text-slate-800">{avgPeriodLength} days</span>
               </div>
             )}
             {lastCycleLength && (
-              <div className="flex items-center justify-between py-3">
+              <div className="flex items-center justify-between py-2.5">
                 <span className="text-sm text-slate-500">Last cycle length</span>
                 <span className="text-sm font-bold text-slate-800">{lastCycleLength} days</span>
               </div>
             )}
+            <div className="flex items-center justify-between py-2.5">
+              <span className="text-sm text-slate-500">Cycles tracked</span>
+              <span className="text-sm font-bold text-slate-800">{cycles.length}</span>
+            </div>
           </div>
         </motion.div>
       )}
 
-      {/* ── Predictions ──────────────────────────────────────── */}
+      {/* ── Across Your Cycles (symptom timeline) ────────────── */}
+      {crossCycleData.length > 0 && cycles.length >= 2 && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.09 }}
+          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <RefreshCw className="w-4 h-4 text-violet-500" />
+            <h3 className="text-sm font-bold text-slate-700">Across Your Cycles</h3>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-4">
+            Each row = one cycle. Purple = symptom day, rose = period day.
+          </p>
+
+          {crossCycleData.slice(0, 3).map((symptomData, sIdx) => {
+            const displayCycles = cycles.slice(-5);
+            return (
+              <div key={symptomData.symptom} className={`${sIdx > 0 ? "mt-5 pt-4 border-t border-slate-50" : ""}`}>
+                <p className="text-xs font-semibold text-slate-600 capitalize mb-2">
+                  {symptomData.label}
+                  <span className="ml-2 text-[10px] font-normal text-slate-400">
+                    in {symptomData.uniqueCycles}/{cycles.length} cycles
+                  </span>
+                </p>
+                <div className="space-y-1.5">
+                  {displayCycles.map((cycle, i) => {
+                    const globalIdx = cycles.length - displayCycles.length + i;
+                    const symptomDays = new Set(symptomData.cycleMap[globalIdx] || []);
+                    // Period days = days 1 through cycle.periodLength
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 w-9 text-right flex-shrink-0">
+                          C{cycle.index}
+                        </span>
+                        <div
+                          className="flex-1 grid gap-0.5"
+                          style={{ gridTemplateColumns: `repeat(${maxCycleDay}, 1fr)` }}
+                        >
+                          {Array.from({ length: maxCycleDay }, (_, d) => {
+                            const day = d + 1;
+                            const isPeriod  = day <= (cycle.periodLength || 5);
+                            const isSymptom = symptomDays.has(day);
+                            return (
+                              <div
+                                key={day}
+                                title={`Day ${day}`}
+                                className={`h-4 rounded-sm ${
+                                  isSymptom ? "bg-violet-400" :
+                                  isPeriod  ? "bg-rose-200"   :
+                                              "bg-slate-100"
+                                }`}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Mini legend */}
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-sm bg-violet-400" />
+                    <span className="text-[10px] text-slate-400">{cap(symptomData.label)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-sm bg-rose-200" />
+                    <span className="text-[10px] text-slate-400">Period</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-sm bg-slate-100" />
+                    <span className="text-[10px] text-slate-400">Other</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </motion.div>
+      )}
+
+      {/* ── Symptom Correlations ─────────────────────────────── */}
+      {(flowCorrelCards.length > 0 || stressCorrelCards.length > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500" />
+              <h3 className="text-sm font-bold text-slate-700">Symptom Correlations</h3>
+            </div>
+            {flowCorrelCards.length > 0 && stressCorrelCards.length > 0 && (
+              <div className="flex bg-slate-100 rounded-xl p-0.5">
+                {[
+                  { id: "flow",   label: "Flow" },
+                  { id: "stress", label: "Stress" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveCorrelTab(tab.id)}
+                    className={`text-[11px] font-semibold px-3 py-1 rounded-lg transition-all ${
+                      activeCorrelTab === tab.id ? "bg-white text-violet-600 shadow-sm" : "text-slate-400"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Flow correlation */}
+          {(activeCorrelTab === "flow" || stressCorrelCards.length === 0) && flowCorrelCards.length > 0 && (
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mb-3">
+                Which symptoms appear with each flow intensity
+              </p>
+              <div className="space-y-3">
+                {flowCorrelCards.map((card) => (
+                  <div key={card.symptom}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-slate-600 capitalize">{card.symptom}</span>
+                      <span className="text-[10px] text-slate-400">{card.total} logged days</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {FLOW_ORDER.filter((f) => (card.data[f] || 0) > 0).map((f) => {
+                        const n   = card.data[f] || 0;
+                        const pct = (n / card.total) * 100;
+                        const col = f === "heavy" ? "bg-rose-500" : f === "medium" ? "bg-rose-400" : f === "light" ? "bg-rose-300" : "bg-rose-200";
+                        return (
+                          <div key={f} className="flex flex-col items-center" style={{ width: `${pct}%`, minWidth: 28 }}>
+                            <div className={`w-full h-5 ${col} rounded-md`} />
+                            <span className="text-[9px] text-slate-400 mt-0.5 capitalize">{f[0]}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 mt-3 pt-2 border-t border-slate-50 flex-wrap">
+                {["spotting", "light", "medium", "heavy"].map((f) => (
+                  <div key={f} className="flex items-center gap-1">
+                    <div className={`w-2.5 h-2.5 rounded-sm ${
+                      f === "heavy" ? "bg-rose-500" : f === "medium" ? "bg-rose-400" : f === "light" ? "bg-rose-300" : "bg-rose-200"
+                    }`} />
+                    <span className="text-[10px] text-slate-400 capitalize">{f}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Stress correlation */}
+          {(activeCorrelTab === "stress" || flowCorrelCards.length === 0) && stressCorrelCards.length > 0 && (
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mb-3">
+                Symptoms on high-stress days (stress ≥ 4/5) — {stressCorrelation.highStressDayCount} days total
+              </p>
+              <div className="space-y-2.5">
+                {stressCorrelCards.map((card) => (
+                  <div key={card.symptom} className="flex items-center gap-3">
+                    <span className="text-xs text-slate-600 capitalize w-28 flex-shrink-0">{card.symptom}</span>
+                    <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(card.count / card.total) * 100}%` }}
+                        transition={{ duration: 0.7, ease: "easeOut" }}
+                        className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full"
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-600 w-10 text-right flex-shrink-0">
+                      {card.count}/{card.total}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* ── Next Period Prediction ────────────────────────────── */}
       {prediction && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 }}
+          transition={{ delay: 0.14 }}
           className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl p-5 border border-rose-100 shadow-sm mb-4"
         >
           <div className="flex items-center gap-2 mb-3">
@@ -156,7 +536,7 @@ export default function Insights() {
               prediction.confidence === "medium" ? "bg-amber-100 text-amber-700"    :
                                                    "bg-orange-100 text-orange-700"
             }`}>
-              {prediction.confidence.charAt(0).toUpperCase() + prediction.confidence.slice(1)} confidence
+              {cap(prediction.confidence)} confidence
             </span>
           </div>
           {prediction.cycles_analyzed > 0 && (
@@ -172,16 +552,14 @@ export default function Insights() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.16 }}
           className={`rounded-2xl p-4 border mb-4 flex items-start gap-3 ${
-            irregularity.isIrregular
-              ? "bg-amber-50 border-amber-200"
-              : "bg-emerald-50 border-emerald-200"
+            irregularity.isIrregular ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
           }`}
         >
           {irregularity.isIrregular
             ? <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-            : <CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+            : <CheckCircle    className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
           }
           <div>
             <p className={`text-xs font-semibold ${irregularity.isIrregular ? "text-amber-700" : "text-emerald-700"}`}>
@@ -199,12 +577,12 @@ export default function Insights() {
         </motion.div>
       )}
 
-      {/* ── Flow distribution (fixed) ────────────────────────── */}
+      {/* ── Flow Distribution ────────────────────────────────── */}
       {flowData.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
+          transition={{ delay: 0.18 }}
           className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
         >
           <div className="flex items-center gap-2 mb-4">
@@ -233,18 +611,18 @@ export default function Insights() {
         </motion.div>
       )}
 
-      {/* ── Symptoms section ─────────────────────────────────── */}
+      {/* ── Symptoms (Frequency / Timing tabs) ───────────────── */}
       {(symptomData.length > 0 || patterns.length > 0) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.21 }}
           className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
         >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Brain className="w-4 h-4 text-violet-400" />
-              <h3 className="text-sm font-bold text-slate-700">Symptoms</h3>
+              <h3 className="text-sm font-bold text-slate-700">Symptom Detail</h3>
             </div>
             {patterns.length > 0 && (
               <div className="flex bg-slate-100 rounded-xl p-0.5">
@@ -256,9 +634,7 @@ export default function Insights() {
                     key={tab.id}
                     onClick={() => setActiveSymptomTab(tab.id)}
                     className={`text-[11px] font-semibold px-3 py-1 rounded-lg transition-all ${
-                      activeSymptomTab === tab.id
-                        ? "bg-white text-violet-600 shadow-sm"
-                        : "text-slate-400"
+                      activeSymptomTab === tab.id ? "bg-white text-violet-600 shadow-sm" : "text-slate-400"
                     }`}
                   >
                     {tab.label}
@@ -287,7 +663,7 @@ export default function Insights() {
               <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mb-3">
                 When each symptom typically appears in your cycle
               </p>
-              {patterns.slice(0, 6).map((p, i) => (
+              {patterns.slice(0, 7).map((p, i) => (
                 <div key={p.rawSymptom} className="flex items-center gap-3">
                   <span className="text-xs text-slate-500 capitalize w-24 flex-shrink-0 truncate">{p.symptom}</span>
                   <div className="flex-1 bg-slate-50 rounded-full h-5 relative overflow-hidden">
@@ -295,8 +671,8 @@ export default function Insights() {
                     {(() => {
                       const cycleLen = stats.avg || 28;
                       const minPct = ((Math.min(...p.allDays) - 1) / cycleLen) * 100;
-                      const maxPct = ((Math.max(...p.allDays)) / cycleLen) * 100;
-                      const avgPct = ((p.avgDay - 1) / cycleLen) * 100;
+                      const maxPct = ((Math.max(...p.allDays))     / cycleLen) * 100;
+                      const avgPct = ((p.avgDay - 1)               / cycleLen) * 100;
                       return (
                         <>
                           <div
@@ -309,18 +685,13 @@ export default function Insights() {
                           />
                           <div
                             className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm"
-                            style={{
-                              left: `calc(${avgPct}% - 5px)`,
-                              backgroundColor: COLORS[i % COLORS.length],
-                            }}
+                            style={{ left: `calc(${avgPct}% - 5px)`, backgroundColor: COLORS[i % COLORS.length] }}
                           />
                         </>
                       );
                     })()}
                   </div>
-                  <span className="text-[10px] text-slate-400 w-14 text-right flex-shrink-0">
-                    {p.typicalRange}
-                  </span>
+                  <span className="text-[10px] text-slate-400 w-14 text-right flex-shrink-0">{p.typicalRange}</span>
                 </div>
               ))}
               <div className="flex items-center gap-4 mt-2 pt-2 border-t border-slate-50">
@@ -338,17 +709,17 @@ export default function Insights() {
         </motion.div>
       )}
 
-      {/* ── Pattern insights (text) ──────────────────────────── */}
+      {/* ── Pattern text ─────────────────────────────────────── */}
       {patterns.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
+          transition={{ delay: 0.24 }}
           className="bg-white rounded-2xl p-5 border border-purple-50 shadow-sm mb-4"
         >
           <h3 className="text-sm font-bold text-slate-700 mb-3">Your Patterns</h3>
           <div className="space-y-2.5">
-            {patterns.slice(0, 5).map((p) => (
+            {patterns.slice(0, 6).map((p) => (
               <div key={p.rawSymptom} className="flex items-start gap-2.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-violet-400 mt-1.5 flex-shrink-0" />
                 <p className="text-xs text-slate-600">
@@ -356,9 +727,7 @@ export default function Insights() {
                   {" "}tends to appear around{" "}
                   <span className="font-semibold text-violet-600">{p.typicalRange}</span>
                   {" "}of your cycle
-                  {p.count >= 3 && (
-                    <span className="text-slate-400"> ({p.count} occurrences)</span>
-                  )}
+                  {p.count >= 3 && <span className="text-slate-400"> ({p.count} times)</span>}
                 </p>
               </div>
             ))}
@@ -366,13 +735,14 @@ export default function Insights() {
         </motion.div>
       )}
 
+      {/* ── Empty state ──────────────────────────────────────── */}
       {totalLogs === 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
           <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <TrendingUp className="w-7 h-7 text-violet-300" />
           </div>
           <h3 className="text-lg font-bold text-slate-600 mb-1">No data yet</h3>
-          <p className="text-sm text-slate-400">Start logging to see your insights here.</p>
+          <p className="text-sm text-slate-400">Start logging to see Luna's insights here.</p>
         </motion.div>
       )}
     </div>

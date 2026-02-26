@@ -54,13 +54,13 @@ export default function Onboarding() {
   const steps = [
     // Step 0: Welcome
     {
-      title: "Welcome to AuraCycle! 🌙",
+      title: "Welcome to Luna! 🌙",
       subtitle: "Your private, smart cycle companion",
       content: (
         <div className="space-y-5">
           <div className="bg-gradient-to-br from-violet-50 to-pink-50 rounded-2xl p-5 border border-purple-100">
             <p className="text-sm text-slate-600 leading-relaxed">
-              AuraCycle helps you track your cycle, understand your body, and get personalised AI insights — all completely private to you.
+              Luna helps you track your cycle, understand your body, and get personalised AI insights — all completely private to you.
             </p>
           </div>
           <div>

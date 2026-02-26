@@ -203,7 +203,7 @@ export default function Settings() {
                 </div>
               </div>
               <p className="text-xs text-slate-400">
-                Browser notifications only appear when AuraCycle is open. For reliable reminders, check the calendar regularly.
+                Browser notifications only appear when Luna is open. For reliable reminders, check the calendar regularly.
               </p>
             </div>
           )}

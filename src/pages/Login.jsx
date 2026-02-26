@@ -102,7 +102,7 @@ export default function Login() {
           <div className="w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-violet-200">
             <Sparkles className="w-9 h-9 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-800 mb-1">AuraCycle</h1>
+          <h1 className="text-3xl font-bold text-slate-800 mb-1">Luna</h1>
           <p className="text-slate-400 text-sm">Your personal cycle companion</p>
         </motion.div>
 

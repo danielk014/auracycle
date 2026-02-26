@@ -143,7 +143,7 @@ export default function Home() {
         <p className="text-sm text-slate-400 font-medium">
           {profile?.display_name ? `Hey, ${profile.display_name} 👋` : "Welcome back 👋"}
         </p>
-        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">AuraCycle</h1>
+        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Luna</h1>
       </motion.div>
 
       {/* Daily log reminder */}
