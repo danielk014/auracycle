@@ -190,7 +190,7 @@ export default function Home() {
       </AnimatePresence>
 
       {/* Cycle wheel — tap to go to Calendar */}
-      <div className="mb-6">
+      <div className="mb-4">
         <Link to={createPageUrl("Calendar")} className="block">
           <CycleWheel
             cycleDay={cycleDay}
@@ -200,18 +200,27 @@ export default function Home() {
             prediction={aiPrediction}
           />
         </Link>
+      </div>
+
+      {/* Daily Tip — right under the wheel */}
+      <div className="mb-4">
+        <DailyTip phase={phase} cycleDay={cycleDay} />
+      </div>
+
+      {/* Next period expected */}
+      <div className="mb-5">
         {lastPeriodStart ? (
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="text-center text-sm text-slate-400 mt-3"
+            transition={{ delay: 0.4 }}
+            className="text-center text-sm text-slate-400"
           >
             Next period expected around{" "}
             <span className="font-semibold text-rose-400">{nextPeriodDate}</span>
           </motion.p>
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center mt-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
             <Link
               to={createPageUrl("Settings")}
               className="text-sm text-violet-500 font-semibold hover:text-violet-600 transition-colors"
@@ -222,6 +231,7 @@ export default function Home() {
         )}
       </div>
 
+      {/* 4 stats panels */}
       <div className="mb-5">
         <QuickStats
           nextPeriodIn={nextPeriodIn}
@@ -233,7 +243,6 @@ export default function Home() {
       </div>
 
       <AIPrediction logs={recentLogs} settings={settings} onPrediction={setAiPrediction} />
-      <DailyTip phase={phase} cycleDay={cycleDay} />
 
       {/* FABs */}
       <div className="fixed bottom-24 right-4 flex flex-col gap-3 z-10">
