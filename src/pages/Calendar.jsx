@@ -36,8 +36,13 @@ function getDayPhase(day, settings) {
   if (!settings?.last_period_start) return null;
   const cycleLength  = settings.average_cycle_length  || 28;
   const periodLength = settings.average_period_length || 5;
-  const daysSince = differenceInDays(day, parseISO(settings.last_period_start));
-  if (daysSince < 0 || daysSince >= cycleLength) return null;
+  let daysSince = differenceInDays(day, parseISO(settings.last_period_start));
+  if (daysSince < 0) {
+    // Extrapolate the previous cycle's phases (same logic as CycleCalendar)
+    daysSince = ((daysSince % cycleLength) + cycleLength) % cycleLength;
+  } else if (daysSince >= cycleLength) {
+    return null;
+  }
   const cycleDay = daysSince + 1;
   if (cycleDay <= periodLength)                                       return "period";
   if (cycleDay >= cycleLength - 16 && cycleDay <= cycleLength - 11)  return "fertile";
@@ -73,10 +78,19 @@ export default function Calendar() {
     ? Math.round(cycles.reduce((sum, c) => sum + c.periodLength, 0) / cycles.length)
     : null;
   const periodLength = avgPeriodFromLogs ?? settings?.average_period_length ?? 5;
+
+  // Hide the prediction when logged period days already fall within or after the prediction
+  // window — the period already happened, so there's nothing to predict for this cycle.
+  const predRangeStart = prediction?.range_start_obj;
+  const periodAlreadyHappened = predRangeStart != null && logs.some(
+    (l) => l.log_type === "period" && parseISO(l.date) >= predRangeStart
+  );
+  const activePrediction = periodAlreadyHappened ? null : prediction;
+
   // Only show the "next cycle" fertile window when a prediction exists (it would be in a future month).
   // Without prediction data, getDayPhase already handles the current cycle's fertile window.
-  const fertile    = prediction?.predicted_date
-    ? getFertileWindow(prediction.predicted_date, avgLen)
+  const fertile    = activePrediction?.predicted_date
+    ? getFertileWindow(activePrediction.predicted_date, avgLen)
     : null;
 
   const deleteLog = useMutation({
@@ -102,7 +116,13 @@ export default function Calendar() {
     return l.log_type === activeFilter;
   });
 
-  const phase = selectedDay ? getDayPhase(selectedDay, settings) : null;
+  // Only show "Menstrual Phase" when the day has an actual period log — not just
+  // from a phase calculation that can be off due to settings drift or timezone issues.
+  const phaseFromCalc = selectedDay ? getDayPhase(selectedDay, settings) : null;
+  const selectedHasPeriodLog = selectedLogs.some((l) => l.log_type === "period");
+  const phase = selectedHasPeriodLog
+    ? "period"
+    : phaseFromCalc === "period" ? null : phaseFromCalc;
   const phaseInfo = phase ? PHASE_INFO[phase] : null;
 
   const now = new Date();
@@ -158,7 +178,7 @@ export default function Calendar() {
         <CycleCalendar
           logs={logs}
           settings={settings}
-          prediction={prediction}
+          prediction={activePrediction}
           fertileWindow={fertile}
           periodLength={periodLength}
           onDayClick={setSelectedDay}
