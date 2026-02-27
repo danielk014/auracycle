@@ -36,9 +36,9 @@ function getDayPhase(day, settings) {
   if (!settings?.last_period_start) return null;
   const cycleLength  = settings.average_cycle_length  || 28;
   const periodLength = settings.average_period_length || 5;
-  const daysSince = differenceInDays(day, new Date(settings.last_period_start));
-  if (daysSince < 0) return null;
-  const cycleDay = (daysSince % cycleLength) + 1;
+  const daysSince = differenceInDays(day, parseISO(settings.last_period_start));
+  if (daysSince < 0 || daysSince >= cycleLength) return null;
+  const cycleDay = daysSince + 1;
   if (cycleDay <= periodLength)                                       return "period";
   if (cycleDay >= cycleLength - 16 && cycleDay <= cycleLength - 11)  return "fertile";
   if (cycleDay > cycleLength - 11)                                    return "luteal";

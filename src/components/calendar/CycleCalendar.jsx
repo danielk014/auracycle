@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   format,
@@ -84,8 +84,18 @@ export default function CycleCalendar({
   periodLength = 5,
 }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [direction, setDirection] = useState(0);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
+
+  const goNext = () => { setDirection(1);  setCurrentMonth((m) => addMonths(m, 1)); };
+  const goPrev = () => { setDirection(-1); setCurrentMonth((m) => subMonths(m, 1)); };
+
+  const slideVariants = {
+    enter:  (dir) => ({ x: dir >= 0 ? "100%" : "-100%", opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit:   (dir) => ({ x: dir >= 0 ? "-100%" : "100%", opacity: 0 }),
+  };
 
   const monthStart   = startOfMonth(currentMonth);
   const monthEnd     = endOfMonth(currentMonth);
@@ -105,8 +115,8 @@ export default function CycleCalendar({
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     // Only treat as swipe if horizontal movement dominates and exceeds threshold
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
-      if (dx < 0) setCurrentMonth((m) => addMonths(m, 1));  // swipe left → next month
-      else        setCurrentMonth((m) => subMonths(m, 1));  // swipe right → prev month
+      if (dx < 0) goNext();  // swipe left → next month
+      else        goPrev();  // swipe right → prev month
     }
     touchStartX.current = null;
     touchStartY.current = null;
@@ -121,7 +131,7 @@ export default function CycleCalendar({
       {/* Month nav */}
       <div className="flex items-center justify-between mb-4">
         <button
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+          onClick={goPrev}
           className="w-9 h-9 rounded-xl hover:bg-purple-50 transition-colors flex items-center justify-center"
         >
           <ChevronLeft className="w-5 h-5 text-slate-400" />
@@ -131,24 +141,34 @@ export default function CycleCalendar({
           <p className="text-xs text-slate-400">{format(currentMonth, "yyyy")}</p>
         </div>
         <button
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+          onClick={goNext}
           className="w-9 h-9 rounded-xl hover:bg-purple-50 transition-colors flex items-center justify-center"
         >
           <ChevronRight className="w-5 h-5 text-slate-400" />
         </button>
       </div>
 
-      {/* Day headers */}
-      <div className="grid grid-cols-7 gap-1 mb-1">
-        {DAY_NAMES.map((d) => (
-          <div key={d} className="text-center text-[10px] font-bold text-slate-400 py-1 uppercase tracking-wide">
-            {d}
-          </div>
-        ))}
-      </div>
+      {/* Day headers + animated grid */}
+      <div className="overflow-hidden">
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {DAY_NAMES.map((d) => (
+            <div key={d} className="text-center text-[10px] font-bold text-slate-400 py-1 uppercase tracking-wide">
+              {d}
+            </div>
+          ))}
+        </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-1">
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={format(currentMonth, "yyyy-MM")}
+            custom={direction}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.22, ease: "easeInOut" }}
+            className="grid grid-cols-7 gap-1"
+          >
         {Array.from({ length: startPadding }).map((_, i) => <div key={`pad-${i}`} />)}
 
         {days.map((day) => {
@@ -194,6 +214,9 @@ export default function CycleCalendar({
           } else if (isFertile) {
             bg   = "bg-emerald-100";
             text = "text-emerald-800";
+          } else if (phase === "period") {
+            bg   = "bg-rose-50";
+            text = "text-rose-400";
           } else if (phase === "luteal") {
             bg   = "bg-violet-50";
             text = "text-violet-700";
@@ -236,6 +259,8 @@ export default function CycleCalendar({
             </motion.button>
           );
         })}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Legend */}

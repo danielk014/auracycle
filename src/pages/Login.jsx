@@ -20,15 +20,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      if (mode === "magic") {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { emailRedirectTo: window.location.origin },
-        });
-        if (error) throw error;
-        setMagicSent(true);
-
-      } else if (mode === "signup") {
+      if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -170,32 +162,30 @@ export default function Login() {
               </div>
             </div>
 
-            {mode !== "magic" && (
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type={showPass ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    minLength={6}
-                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-purple-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type={showPass ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-purple-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
-            )}
+            </div>
 
             {error && (
               <motion.p
@@ -223,15 +213,6 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Magic link option */}
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => { setMode(mode === "magic" ? "login" : "magic"); setError(""); }}
-              className="text-xs text-violet-500 hover:text-violet-700 font-medium"
-            >
-              {mode === "magic" ? "← Use password instead" : "✨ Sign in with magic link (no password)"}
-            </button>
-          </div>
         </motion.div>
 
         <p className="text-center text-xs text-slate-400 mt-6 px-4">
