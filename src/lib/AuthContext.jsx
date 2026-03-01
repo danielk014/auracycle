@@ -99,7 +99,16 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (event === "SIGNED_OUT") {
-          // Clear ALL cached data so no user's data leaks to the next session
+          // Before wiping state, confirm there really is no active session.
+          // On Edge mobile PWA a token-refresh timeout can fire a spurious
+          // SIGNED_OUT even though the session is still valid in storage.
+          const { data: { session: activeSession } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+          if (activeSession) {
+            // Session is still alive — ignore the spurious sign-out event.
+            setUser(activeSession.user);
+            return;
+          }
+          // Genuine sign-out: clear ALL cached data so no data leaks to the next session.
           clearSettingsCache();
           queryClientInstance.clear();
           setUser(null);
