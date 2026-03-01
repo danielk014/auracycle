@@ -282,26 +282,29 @@ export default function Calendar() {
                           {isConfirming ? (
                             <>
                               <button
+                                type="button"
                                 onClick={() => deleteLog.mutate(log.id)}
                                 disabled={deleteLog.isPending}
-                                className="text-[11px] font-semibold text-white bg-rose-500 px-2.5 py-1 rounded-lg hover:bg-rose-600 transition-colors"
+                                className="text-[11px] font-semibold text-white bg-rose-500 px-3 py-2 rounded-lg active:bg-rose-600 transition-colors touch-manipulation min-w-[48px]"
                               >
                                 Delete
                               </button>
                               <button
+                                type="button"
                                 onClick={() => setConfirmDelete(null)}
-                                className="text-[11px] text-slate-400 hover:text-slate-600 p-1"
+                                className="text-slate-400 active:text-slate-600 p-2.5 touch-manipulation"
                               >
-                                <X className="w-3.5 h-3.5" />
+                                <X className="w-4 h-4" />
                               </button>
                             </>
                           ) : (
                             <button
+                              type="button"
                               onClick={() => setConfirmDelete(log.id)}
-                              className="p-1.5 rounded-xl text-slate-300 hover:text-rose-400 hover:bg-rose-50 transition-colors"
+                              className="p-2.5 rounded-xl text-slate-300 active:text-rose-400 active:bg-rose-50 transition-colors touch-manipulation"
                               title="Delete log"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>
