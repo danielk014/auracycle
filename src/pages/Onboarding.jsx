@@ -8,7 +8,7 @@ import { Sparkles, ChevronRight, Bell, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DatePicker from "@/components/ui/DatePicker";
 
-const STEPS = ["welcome", "period", "reminders", "done"];
+const STEPS = ["welcome", "period", "reminders"];
 
 export default function Onboarding() {
   const { refreshProfile } = useAuth();
@@ -173,28 +173,6 @@ export default function Onboarding() {
           <p className="text-xs text-slate-400 text-center">
             You can change this anytime in Settings. Notifications only work while the app is open in your browser.
           </p>
-        </div>
-      ),
-      cta: "Almost done!",
-    },
-
-    // Step 3: Done
-    {
-      title: `You're all set${form.display_name ? `, ${form.display_name}` : ""}! 🎉`,
-      subtitle: "Your cycle tracking journey starts now",
-      content: (
-        <div className="space-y-3">
-          {[
-            { emoji: "📅", text: "Track your period start & end dates" },
-            { emoji: "🔮", text: "AI-powered cycle predictions" },
-            { emoji: "💬", text: "Chat with Luna AI for health insights" },
-            { emoji: "📊", text: "See patterns in your symptoms & mood" },
-          ].map((item) => (
-            <div key={item.text} className="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 border border-purple-50 shadow-sm">
-              <span className="text-xl">{item.emoji}</span>
-              <p className="text-sm text-slate-600">{item.text}</p>
-            </div>
-          ))}
         </div>
       ),
       cta: "Start Tracking",
