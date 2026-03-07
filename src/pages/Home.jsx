@@ -66,14 +66,41 @@ export default function Home() {
   let nextPeriodIn = Math.round(cycleLength);
   let nextPeriodDate = "";
 
-  if (lastPeriodStart) {
-    const daysSince = differenceInDays(new Date(), parseISO(lastPeriodStart));
+  // Prefer the most recent period start: compare settings vs. the last logged
+  // cycle's actual start. This fixes the % cycleLength wrapping bug where stale
+  // settings (e.g. Feb 4 + 28 days = March 3 ≡ day 4) show the wrong cycle day
+  // when the user has already logged a more recent period.
+  const loggedCycleStart = computedCycles.length > 0
+    ? computedCycles[computedCycles.length - 1].start
+    : null;
+  const effectiveStart = (loggedCycleStart && lastPeriodStart)
+    ? (loggedCycleStart > lastPeriodStart ? loggedCycleStart : lastPeriodStart)
+    : (loggedCycleStart || lastPeriodStart);
+
+  if (effectiveStart) {
+    const daysSince = differenceInDays(new Date(), parseISO(effectiveStart));
     cycleDay = (daysSince % cycleLength) + 1;
     nextPeriodIn = cycleLength - (daysSince % cycleLength);
     nextPeriodDate = format(addDays(new Date(), nextPeriodIn), "MMM d");
   }
 
-  const phase = getPhase(cycleDay, cycleLength, periodLength);
+  // When last_period_end is known, compute the actual period length from real dates
+  // rather than relying on the stored average, which may differ from reality.
+  const lastPeriodEnd = settings?.last_period_end;
+  const effectivePeriodLength = (effectiveStart && lastPeriodEnd && lastPeriodEnd >= effectiveStart)
+    ? differenceInDays(parseISO(lastPeriodEnd), parseISO(effectiveStart)) + 1
+    : periodLength;
+
+  // If the period has ended (last_period_end is today or in the past), advance
+  // cycleDay past the period length so the phase transitions out of "period"
+  // immediately — fixes "last day" not registering on the wheel.
+  const periodHasEnded = !!lastPeriodEnd &&
+    differenceInDays(new Date(), parseISO(lastPeriodEnd)) >= 0;
+  if (periodHasEnded) {
+    cycleDay = Math.max(cycleDay, effectivePeriodLength + 1);
+  }
+
+  const phase = getPhase(cycleDay, cycleLength, effectivePeriodLength);
   const [aiPrediction, setAiPrediction] = useState(null);
 
   // ── Prediction arrival banner ──────────────────────────────
@@ -276,7 +303,7 @@ export default function Home() {
           <CycleWheel
             cycleDay={cycleDay}
             cycleLength={cycleLength}
-            periodLength={periodLength}
+            periodLength={effectivePeriodLength}
             phase={phase}
             prediction={aiPrediction}
           />
@@ -293,7 +320,7 @@ export default function Home() {
 
       {/* Next period expected */}
       <div className="mb-5">
-        {lastPeriodStart && (
+        {effectiveStart && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -327,8 +354,8 @@ export default function Home() {
         <QuickStats
           nextPeriodIn={nextPeriodIn}
           cycleLength={cycleLength}
-          periodLength={periodLength}
-          lastPeriod={lastPeriodStart ? format(new Date(lastPeriodStart), "MMM d") : null}
+          periodLength={effectivePeriodLength}
+          lastPeriod={effectiveStart ? format(parseISO(effectiveStart), "MMM d") : null}
           cyclesCount={computedCycles.length}
         />
       </div>
